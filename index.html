@@ -700,6 +700,18 @@ function rebuildFinTable(jar, sodra) {
 
 async function selectCompany(jar) {
   selectedJar = jar;
+  // Auto-fill sector field with this company's sector (visual only, don't filter)
+  const comp = allCompanies.find(x => x.jar_kodas === jar);
+  if (comp && comp.evrk_name) {
+    const tb = document.getElementById('f-sector-topbar');
+    if (tb && !window.selectedSectorCode) {
+      tb.value = comp.evrk_name;
+      tb.style.background = '#f0f9ff';
+      tb.style.borderColor = '#93c5fd';
+      tb.style.fontWeight = '400';
+      tb._companyAutoFill = true; // mark as auto-filled
+    }
+  }
   renderList();
 
   // Show detail tab
@@ -1045,29 +1057,6 @@ async function exportCompanyDetail() {
   const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
   wsDetail['!cols'] = [{wch:22},{wch:16},{wch:14},{wch:14},{wch:16},{wch:14},{wch:13},{wch:13},{wch:10},{wch:10},{wch:14},{wch:16}];
 
-  // Add Excel charts to Company Detail sheet
-  const finStart = 11; // row index where financial data starts (0-based header at row 10, data from 11)
-  const finEnd = finStart + finData.length - 1;
-  const revTrendStart = finEnd + 4;
-  const revTrendEnd = revTrendStart + finData.length - 1;
-  const marginStart = revTrendEnd + 4;
-  const marginEnd = marginStart + finData.length - 1;
-  const empStart = marginEnd + 4;
-  const empEnd = empStart + finData.length - 1;
-
-  if (!wsDetail['!charts']) wsDetail['!charts'] = [];
-
-  // Chart 1: Revenue & EBT Bar Chart
-  wsDetail['!charts'].push({
-    name: 'Revenue & EBT', type: 'bar',
-    series: [
-      { name: 'Revenue (€)', values: { sheet: 'Company detail', start: [revTrendStart+1, 1], end: [revTrendEnd+1, 1] } },
-      { name: 'EBT (€)', values: { sheet: 'Company detail', start: [revTrendStart+1, 2], end: [revTrendEnd+1, 2] } }
-    ],
-    categories: { sheet: 'Company detail', start: [revTrendStart+1, 0], end: [revTrendEnd+1, 0] },
-    position: { x: 0, y: finEnd + 2, w: 12, h: 15 }
-  });
-
   XLSX.utils.book_append_sheet(wb, wsDetail, 'Company detail');
 
   // ── Sheet 2: FS ─────────────────────────────────────────────────────────────
@@ -1182,8 +1171,25 @@ function showSectorTopbar() {
 }
 function hideSectorTopbar() { setTimeout(() => { document.getElementById('sector-dd-topbar').style.display = 'none'; }, 150); }
 function filterSectorTopbar() {
-  const q = (document.getElementById('f-sector-topbar').value || '').toLowerCase().trim();
-  // Only clear sector if user explicitly cleared the field
+  const tb = document.getElementById('f-sector-topbar');
+  const q = (tb?.value || '').toLowerCase().trim();
+
+  // If this was auto-filled by company selection, clear it and start fresh
+  if (tb?._companyAutoFill) {
+    tb._companyAutoFill = false;
+    tb.value = '';
+    tb.style.background = '';
+    tb.style.borderColor = '';
+  }
+
+  // Deselect company when user types in sector
+  if (selectedJar) {
+    selectedJar = null;
+    window.selectedCompanyJar = '';
+    document.getElementById('search').value = '';
+    renderList();
+  }
+
   if (!q && window.selectedSectorCode) {
     window.selectedSectorCode = '';
     const sb = document.getElementById('f-sector-input');
