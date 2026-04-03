@@ -202,7 +202,56 @@ select{padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;b
       </div>
     </div>
 
-    <!-- DETAIL TAB -->
+    <!-- Sector/competitor table -->
+    <div id="sector-table-wrap" style="display:none;margin-top:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="card-title" id="sector-table-title">Companies in sector</div>
+          <button onclick="exportSectorTable()" class="btn btn-green" style="font-size:12px;padding:5px 10px">Export to Excel</button>
+        </div>
+        <div class="tbl-wrap" id="sector-tbl-container">
+          <table class="sector-tbl" id="sector-tbl">
+            <thead><tr>
+              <th onclick="sortSectorTable('name')" id="sth-name">Company</th>
+              <th onclick="sortSectorTable('sector')" id="sth-sector">Sector</th>
+              <th onclick="sortSectorTable('rev24')" id="sth-rev24" class="sort-desc">Revenue 2024</th>
+              <th onclick="sortSectorTable('rev23')" id="sth-rev23">Revenue 2023</th>
+              <th onclick="sortSectorTable('revchg')" id="sth-revchg">Rev change %</th>
+              <th onclick="sortSectorTable('ebt24')" id="sth-ebt24">EBT 2024</th>
+              <th onclick="sortSectorTable('ebt23')" id="sth-ebt23">EBT 2023</th>
+              <th onclick="sortSectorTable('ebtm24')" id="sth-ebtm24">EBT margin 2024</th>
+              <th onclick="sortSectorTable('ebtm23')" id="sth-ebtm23">EBT margin 2023</th>
+            </tr></thead>
+            <tbody id="sector-tbl-body"></tbody>
+          </table>
+        </div>
+        <div id="sector-tbl-count" style="font-size:11px;color:#888;margin-top:6px"></div>
+      </div>
+    </div>
+
+    <!-- Revenue/EBT/Salary trend charts -->
+    <div id="trend-chart-wrap" style="display:none;margin-top:12px">
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title" id="trend-title-rev">Revenue (€)</div>
+        <div class="chart-wrap" style="height:220px"><canvas id="trend-chart-rev"></canvas></div>
+      </div>
+      <div class="grid2" style="gap:12px">
+        <div class="card">
+          <div class="card-title" id="trend-title-ebt">EBT Margin %</div>
+          <div class="chart-wrap" style="height:200px"><canvas id="trend-chart-ebt"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title" id="trend-title-rpe">Revenue per Employee (€)</div>
+          <div class="chart-wrap" style="height:200px"><canvas id="trend-chart-rpe"></canvas></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="card-title" id="trend-title-sal">Average Salary (€/mo)</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="trend-chart-sal"></canvas></div>
+      </div>
+    </div>
+
+        <!-- DETAIL TAB -->
     <div id="view-detail" class="view">
       <div id="detail-content" class="empty">Select a company from the list</div>
     </div>
@@ -490,7 +539,17 @@ function pickCompany(jar, name) {
   renderCompanyTags();
   document.getElementById('company-dd').style.display = 'none';
   applyFilters();
+  // Load SODRA for this company for trend charts
+  loadCompanySodra(jar);
   if (window.selectedCompanies.size === 1) setTimeout(() => selectCompany(jar), 200);
+}
+
+async function loadCompanySodra(jar) {
+  if (!window._sectorSodraCache) window._sectorSodraCache = {};
+  if (window._sectorSodraCache[jar]) return; // already loaded
+  const rows = await sbGet(`sodra_workforce?select=jar_kodas,period_year,period_month,employees_avg,avg_salary&jar_kodas=eq.${jar}&order=period_year,period_month&limit=1000`);
+  window._sectorSodraCache[jar] = rows;
+  updateTrendChart();
 }
 
 function showCompanyDD() { renderCompanyDD(); document.getElementById('company-dd').style.display = 'block'; }
@@ -1188,7 +1247,12 @@ function updateSectorTable() {
 
   let companies = [], title = '', highlightJar = null;
 
-  if (selectedJar) {
+  // Priority 1: multiple companies selected → show only those companies
+  if (window.selectedCompanies && window.selectedCompanies.size > 1) {
+    companies = allCompanies.filter(x => window.selectedCompanies.has(x.jar_kodas));
+    title = `Selected companies (${companies.length})`;
+  } else if (selectedJar) {
+    // Priority 2: single company → show its sector competitors
     const c = allCompanies.find(x => x.jar_kodas === selectedJar);
     if (c && c.evrk_code) {
       companies = allCompanies.filter(x => x.evrk_code === c.evrk_code);
@@ -1196,9 +1260,10 @@ function updateSectorTable() {
       highlightJar = selectedJar;
     }
   } else if (window.selectedSectors && window.selectedSectors.size > 0) {
+    // Priority 3: sectors selected → show all companies in those sectors
     companies = allCompanies.filter(x => window.selectedSectors.has(x.evrk_code));
     const names = Array.from(window.selectedSectors).map(c => window.sectorOptions?.find(s=>s.code===c)?.name||c);
-    title = `${names.length} sector${names.length>1?'s':''}: ${names.slice(0,2).join(', ')}${names.length>2?' +'+( names.length-2)+' more':''} (${companies.length} companies)`;
+    title = `${names.length} sector${names.length>1?'s':''}: ${names.slice(0,2).join(', ')}${names.length>2?' +'+(names.length-2)+' more':''} (${companies.length} companies)`;
   }
 
   if (!companies.length) {
