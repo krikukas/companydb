@@ -967,114 +967,119 @@ async function exportCompanyDetail() {
   const c = allCompanies.find(x => x.jar_kodas === selectedJar);
   if (!c) return;
 
-  // Wait for all years to load if still loading
+  // Wait for all years if still loading
   if (!window.allYearsLoaded) {
     const btn = event?.target;
-    if (btn) { btn.textContent = 'Loading years...'; btn.disabled = true; }
+    if (btn) { btn.textContent = 'Loading...'; btn.disabled = true; }
     await new Promise(resolve => {
-      const check = setInterval(() => {
-        if (window.allYearsLoaded) { clearInterval(check); resolve(); }
-      }, 500);
-      setTimeout(() => { clearInterval(check); resolve(); }, 30000); // max 30s wait
+      const check = setInterval(() => { if (window.allYearsLoaded) { clearInterval(check); resolve(); } }, 500);
+      setTimeout(() => { clearInterval(check); resolve(); }, 30000);
     });
     if (btn) { btn.textContent = 'Export to Excel'; btn.disabled = false; }
   }
 
   const wb = XLSX.utils.book_new();
   const sodra = window._lastSodra || [];
-
-  // Build annual SODRA aggregates (avg employees & avg salary per year)
-  const sodraByYear = {};
-  sodra.forEach(x => {
-    if (!sodraByYear[x.period_year]) sodraByYear[x.period_year] = { salaries: [], employees: [] };
-    if (x.avg_salary) sodraByYear[x.period_year].salaries.push(x.avg_salary);
-    if (x.employees_avg) sodraByYear[x.period_year].employees.push(x.employees_avg);
-  });
-  const avgSodra = (yr) => {
-    const d = sodraByYear[yr];
-    if (!d) return { emp: null, sal: null };
-    const emp = d.employees.length ? Math.round(d.employees.reduce((a,b)=>a+b,0)/d.employees.length) : null;
-    const sal = d.salaries.length ? Math.round(d.salaries.reduce((a,b)=>a+b,0)/d.salaries.length) : null;
-    return { emp, sal };
-  };
-
-  // ── Sheet 1: Company Detail ──────────────────────────────────────────────────
   const years = Object.keys(financialsCache).map(Number).sort((a,b)=>a-b);
 
-  const detailRows = [];
-  // Company info header
-  detailRows.push(['COMPANY DETAIL', '']);
-  detailRows.push(['Company name', c.company_name || '']);
-  detailRows.push(['JAR code', c.jar_kodas]);
-  detailRows.push(['Legal form', c.legal_form || '']);
-  detailRows.push(['Municipality', c.municipality || '']);
-  detailRows.push(['EVRK sector', c.evrk_name || '']);
-  detailRows.push(['EVRK code', c.evrk_code || '']);
-  detailRows.push(['CEO gender', c.ceo_gender || '']);
-  detailRows.push(['Has board', c.has_board ? 'Yes' : 'No']);
-  detailRows.push([]);
-  // Financial table header
-  detailRows.push([
-    'Year', 'Revenue (€)', 'EBT (€)', 'Net Profit (€)',
-    'Total Assets (€)', 'Equity (€)', 'Total Liabilities (€)',
-    'EBT Margin %', 'Net Margin %', 'ROE %', 'ROA %',
-    'Avg Employees', 'Avg Salary (€/mo)'
-  ]);
-  years.forEach(yr => {
-    const f = (financialsCache[yr] || {})[c.jar_kodas];
-    if (!f) return;
-    const { emp, sal } = avgSodra(yr);
-    const ebtM = f.revenue ? Math.round((f.ebt||0)/f.revenue*1000)/10 : null;
-    const netM = f.revenue ? Math.round((f.net_profit||0)/f.revenue*1000)/10 : null;
-    const roe = f.equity ? Math.round((f.net_profit||0)/f.equity*1000)/10 : null;
-    const roa = f.total_assets ? Math.round((f.net_profit||0)/f.total_assets*1000)/10 : null;
-    detailRows.push([
-      yr, f.revenue||'', f.ebt||'', f.net_profit||'',
-      f.total_assets||'', f.equity||'', f.total_liabilities||'',
-      ebtM, netM, roe, roa, emp, sal
-    ]);
+  // Build annual SODRA aggregates
+  const sodraByYear = {};
+  sodra.forEach(x => {
+    if (!sodraByYear[x.period_year]) sodraByYear[x.period_year] = {sal:[],emp:[]};
+    if (x.avg_salary) sodraByYear[x.period_year].sal.push(x.avg_salary);
+    if (x.employees_avg) sodraByYear[x.period_year].emp.push(x.employees_avg);
   });
+  const avgSodra = yr => {
+    const d = sodraByYear[yr];
+    if (!d) return { emp: null, sal: null };
+    return {
+      emp: d.emp.length ? Math.round(d.emp.reduce((a,b)=>a+b,0)/d.emp.length) : null,
+      sal: d.sal.length ? Math.round(d.sal.reduce((a,b)=>a+b,0)/d.sal.length) : null
+    };
+  };
+
+  // Build financial rows for all years
+  const finData = years.map(yr => {
+    const f = (financialsCache[yr]||{})[c.jar_kodas];
+    if (!f) return null;
+    const {emp,sal} = avgSodra(yr);
+    return {
+      yr, rev: f.revenue||0, ebt: f.ebt||0, netP: f.net_profit||0,
+      assets: f.total_assets||0, equity: f.equity||0, liab: f.total_liabilities||0,
+      ebtM: f.revenue ? Math.round((f.ebt||0)/f.revenue*1000)/10 : null,
+      netM: f.revenue ? Math.round((f.net_profit||0)/f.revenue*1000)/10 : null,
+      roe: f.equity ? Math.round((f.net_profit||0)/f.equity*1000)/10 : null,
+      roa: f.total_assets ? Math.round((f.net_profit||0)/f.total_assets*1000)/10 : null,
+      emp, sal
+    };
+  }).filter(Boolean);
+
+  // ── Sheet 1: Company Detail ─────────────────────────────────────────────────
+  const detailRows = [
+    ['COMPANY DETAIL'],
+    ['Company name', c.company_name || ''],
+    ['JAR code', c.jar_kodas],
+    ['Legal form', c.legal_form || ''],
+    ['Municipality', c.municipality || ''],
+    ['EVRK sector', c.evrk_name || ''],
+    ['CEO gender', c.ceo_gender || ''],
+    ['Has board', c.has_board ? 'Yes' : 'No'],
+    [],
+    ['FINANCIAL SUMMARY'],
+    ['Year','Revenue (€)','EBT (€)','Net Profit (€)','Total Assets (€)','Equity (€)','EBT Margin %','Net Margin %','ROE %','ROA %','Avg Employees','Avg Salary (€/mo)']
+  ];
+  finData.forEach(r => detailRows.push([r.yr, r.rev, r.ebt, r.netP, r.assets, r.equity, r.ebtM, r.netM, r.roe, r.roa, r.emp, r.sal]));
+  detailRows.push([]);
+  detailRows.push(['REVENUE & EBT TREND']);
+  detailRows.push(['Year','Revenue (€)','EBT (€)']);
+  finData.forEach(r => detailRows.push([r.yr, r.rev, r.ebt]));
+  detailRows.push([]);
+  detailRows.push(['EBT MARGIN & NET MARGIN TREND']);
+  detailRows.push(['Year','EBT Margin %','Net Margin %']);
+  finData.forEach(r => detailRows.push([r.yr, r.ebtM, r.netM]));
+  detailRows.push([]);
+  detailRows.push(['EMPLOYEES & SALARY (ANNUAL AVG)']);
+  detailRows.push(['Year','Avg Employees','Avg Salary (€/mo)']);
+  finData.forEach(r => detailRows.push([r.yr, r.emp, r.sal]));
 
   const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
-  wsDetail['!cols'] = [
-    {wch:6},{wch:14},{wch:12},{wch:14},{wch:16},{wch:12},{wch:18},
-    {wch:12},{wch:12},{wch:10},{wch:10},{wch:14},{wch:16}
-  ];
+  wsDetail['!cols'] = [{wch:22},{wch:16},{wch:14},{wch:14},{wch:16},{wch:14},{wch:13},{wch:13},{wch:10},{wch:10},{wch:14},{wch:16}];
+
+  // Add Excel charts to Company Detail sheet
+  const finStart = 11; // row index where financial data starts (0-based header at row 10, data from 11)
+  const finEnd = finStart + finData.length - 1;
+  const revTrendStart = finEnd + 4;
+  const revTrendEnd = revTrendStart + finData.length - 1;
+  const marginStart = revTrendEnd + 4;
+  const marginEnd = marginStart + finData.length - 1;
+  const empStart = marginEnd + 4;
+  const empEnd = empStart + finData.length - 1;
+
+  if (!wsDetail['!charts']) wsDetail['!charts'] = [];
+
+  // Chart 1: Revenue & EBT Bar Chart
+  wsDetail['!charts'].push({
+    name: 'Revenue & EBT', type: 'bar',
+    series: [
+      { name: 'Revenue (€)', values: { sheet: 'Company detail', start: [revTrendStart+1, 1], end: [revTrendEnd+1, 1] } },
+      { name: 'EBT (€)', values: { sheet: 'Company detail', start: [revTrendStart+1, 2], end: [revTrendEnd+1, 2] } }
+    ],
+    categories: { sheet: 'Company detail', start: [revTrendStart+1, 0], end: [revTrendEnd+1, 0] },
+    position: { x: 0, y: finEnd + 2, w: 12, h: 15 }
+  });
+
   XLSX.utils.book_append_sheet(wb, wsDetail, 'Company detail');
 
-  // ── Sheet 2: FS (Financial Statements) ──────────────────────────────────────
-  const fsRows = [[
-    'Year', 'Revenue (€)', 'EBT (€)', 'Net Profit (€)',
-    'Total Assets (€)', 'Equity (€)', 'Total Liabilities (€)',
-    'EBT Margin %', 'Net Margin %', 'ROE %', 'ROA %',
-    'Avg Employees', 'Avg Salary (€/mo)'
-  ]];
-  years.forEach(yr => {
-    const f = (financialsCache[yr] || {})[c.jar_kodas];
-    if (!f) return;
-    const { emp, sal } = avgSodra(yr);
-    const ebtM = f.revenue ? Math.round((f.ebt||0)/f.revenue*1000)/10 : null;
-    const netM = f.revenue ? Math.round((f.net_profit||0)/f.revenue*1000)/10 : null;
-    const roe = f.equity ? Math.round((f.net_profit||0)/f.equity*1000)/10 : null;
-    const roa = f.total_assets ? Math.round((f.net_profit||0)/f.total_assets*1000)/10 : null;
-    fsRows.push([
-      yr, f.revenue||'', f.ebt||'', f.net_profit||'',
-      f.total_assets||'', f.equity||'', f.total_liabilities||'',
-      ebtM, netM, roe, roa, emp, sal
-    ]);
-  });
+  // ── Sheet 2: FS ─────────────────────────────────────────────────────────────
+  const fsRows = [['Year','Revenue (€)','EBT (€)','Net Profit (€)','Total Assets (€)','Equity (€)','Total Liabilities (€)','EBT Margin %','Net Margin %','ROE %','ROA %','Avg Employees','Avg Salary (€/mo)']];
+  finData.forEach(r => fsRows.push([r.yr, r.rev, r.ebt, r.netP, r.assets, r.equity, r.liab, r.ebtM, r.netM, r.roe, r.roa, r.emp, r.sal]));
   const wsFS = XLSX.utils.aoa_to_sheet(fsRows);
-  wsFS['!cols'] = [
-    {wch:6},{wch:14},{wch:12},{wch:14},{wch:16},{wch:12},{wch:18},
-    {wch:12},{wch:12},{wch:10},{wch:10},{wch:14},{wch:16}
-  ];
+  wsFS['!cols'] = [{wch:6},{wch:14},{wch:12},{wch:14},{wch:16},{wch:12},{wch:18},{wch:12},{wch:12},{wch:10},{wch:10},{wch:14},{wch:16}];
   XLSX.utils.book_append_sheet(wb, wsFS, 'FS');
 
-  // ── Sheet 3: Employees (monthly) ─────────────────────────────────────────────
-  const empRows = [['Year', 'Month', 'Employees (avg)', 'Avg Salary (€)']];
-  sodra.forEach(x => {
-    empRows.push([x.period_year, x.period_month, x.employees_avg, x.avg_salary ? Math.round(x.avg_salary) : '']);
-  });
+  // ── Sheet 3: Employees ───────────────────────────────────────────────────────
+  const empRows = [['Year','Month','Employees (avg)','Avg Salary (€)']];
+  sodra.forEach(x => empRows.push([x.period_year, x.period_month, x.employees_avg, x.avg_salary ? Math.round(x.avg_salary) : '']));
   const wsEmp = XLSX.utils.aoa_to_sheet(empRows);
   wsEmp['!cols'] = [{wch:6},{wch:6},{wch:16},{wch:14}];
   XLSX.utils.book_append_sheet(wb, wsEmp, 'Employees');
@@ -1082,6 +1087,7 @@ async function exportCompanyDetail() {
   const fname = (c.company_name || c.jar_kodas).replace(/[^a-zA-Z0-9]/g,'_').substring(0,30);
   XLSX.writeFile(wb, `${fname}_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
+
 
 // ── Export to Excel ───────────────────────────────────────────────────────────────
 function exportExcel() {
