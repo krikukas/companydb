@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CompanyDB — Lithuanian Company Database</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#1a1a1a;font-size:14px}
+.topbar{background:#fff;border-bottom:1px solid #e5e5e5;padding:12px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
+.topbar h1{font-size:16px;font-weight:600;white-space:nowrap}
+.topbar input[type=text]{padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-width:220px;flex:1}
+select{padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff}
+.btn{padding:7px 14px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f5f5f5}
+.btn-green{background:#16a34a;color:#fff;border-color:#16a34a}
+.btn-green:hover{background:#15803d}
+.main{display:flex;height:calc(100vh - 57px)}
+.sidebar{width:320px;flex-shrink:0;background:#fff;border-right:1px solid #e5e5e5;display:flex;flex-direction:column;overflow:hidden}
+.filters{padding:12px;border-bottom:1px solid #e5e5e5}
+.filters label{font-size:11px;color:#666;font-weight:500;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px;margin-top:8px}
+.filters label:first-child{margin-top:0}
+.filters input,.filters select{width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:5px;font-size:12px}
+.filter-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.results-header{padding:8px 12px;font-size:11px;color:#666;border-bottom:1px solid #e5e5e5;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.company-list{flex:1;overflow-y:auto}
+.company-item{padding:10px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer}
+.company-item:hover{background:#f9f9f9}
+.company-item.active{background:#eff6ff;border-left:3px solid #2563eb}
+.cname{font-weight:500;font-size:13px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmeta{font-size:11px;color:#888;display:flex;gap:8px}
+.crev{font-weight:500;color:#1a1a1a}
+.cmargin-pos{color:#16a34a}
+.cmargin-neg{color:#dc2626}
+.content{flex:1;overflow-y:auto;padding:16px}
+.loading{display:flex;align-items:center;justify-content:center;height:200px;color:#888;font-size:13px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.metric{background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:12px 14px}
+.metric-label{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.metric-value{font-size:22px;font-weight:600}
+.metric-sub{font-size:11px;color:#888;margin-top:2px}
+.sparkbar[title]:hover .sbl{color:#2563eb;font-weight:500}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.card{background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px 16px}
+.card-title{font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:12px}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;margin-bottom:12px}
+.detail-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f5f5f5}
+.detail-key{color:#666}
+.detail-val{font-weight:500}
+.sparkbar{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid #f5f5f5}
+.sparkbar:last-child{border-bottom:none}
+.sbl{width:130px;color:#1a1a1a;font-size:12px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}
+.sbw{flex:1;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden}
+.sbb{height:100%;border-radius:3px}
+.sbv{width:64px;text-align:right;font-weight:500}
+.pos{color:#16a34a}
+.neg{color:#dc2626}
+.badge{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:500}
+.bf{background:#fce7f3;color:#9d174d}
+.bm{background:#dbeafe;color:#1e40af}
+.chart-wrap{position:relative;width:100%}
+.tabs{display:flex;border-bottom:1px solid #e5e5e5;margin-bottom:14px}
+.tab{padding:8px 14px;font-size:12px;font-weight:500;cursor:pointer;color:#666;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.active{color:#1a1a1a;border-bottom-color:#1a1a1a}
+.view{display:none}.view.active{display:block}
+.empty{text-align:center;padding:40px;color:#888;font-size:13px}
+.tag{display:inline-block;padding:2px 8px;background:#f0f0f0;border-radius:4px;font-size:11px;margin:2px}
+#loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.96);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.loading-title{font-size:20px;font-weight:600;color:#1a1a1a}
+.loading-sub{font-size:13px;color:#666;min-height:20px}
+.loading-bar-wrap{width:320px;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden}
+.loading-bar{height:100%;background:#2563eb;border-radius:3px;transition:width .3s ease;width:0%}
+.loading-steps{font-size:11px;color:#aaa;margin-top:4px}
+.sector-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.sector-tbl th{text-align:left;padding:8px 10px;font-weight:600;color:#444;border-bottom:2px solid #e5e5e5;font-size:11px;text-transform:uppercase;cursor:pointer;white-space:nowrap;user-select:none;background:#fafafa;position:sticky;top:0}
+.sector-tbl th:hover{background:#f0f0f0}
+.sector-tbl th.sort-asc::after{content:" ▲";font-size:9px;color:#2563eb}
+.sector-tbl th.sort-desc::after{content:" ▼";font-size:9px;color:#2563eb}
+.sector-tbl td{padding:7px 10px;border-bottom:1px solid #f0f0f0;white-space:nowrap}
+.sector-tbl tr:hover td{background:#f9f9f9;cursor:pointer}
+.sector-tbl tr.highlight td{background:#eff6ff}
+.sector-tbl tr.highlight:hover td{background:#dbeafe}
+.tbl-wrap{max-height:420px;overflow-y:auto;border:1px solid #e5e5e5;border-radius:8px}
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="loading-title">CompanyDB</div>
+  <div class="loading-bar-wrap"><div class="loading-bar" id="load-bar"></div></div>
+  <div class="loading-sub" id="load-msg">Connecting to database...</div>
+  <div class="loading-steps" id="load-steps"></div>
+</div>
+<div class="topbar">
+  <h1>CompanyDB</h1>
+  <div style="position:relative;flex:1;min-width:200px;max-width:300px">
+    <input type="text" id="search" placeholder="Search company..." oninput="debounceSearch(this.value)" onfocus="showCompanyDD()" onblur="hideCompanyDD()" autocomplete="off" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+    <div id="company-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;max-height:280px;overflow-y:auto;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,0.12);margin-top:2px"></div>
+  </div>
+  <div style="position:relative;flex:2;min-width:360px;max-width:520px">
+    <input type="text" id="f-sector-topbar" placeholder="Search sector..." oninput="filterSectorTopbar()" onfocus="showSectorTopbar()" onblur="hideSectorTopbar()" autocomplete="off" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+    <div id="sector-dd-topbar" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;max-height:280px;overflow-y:auto;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,0.12);margin-top:2px"></div>
+  </div>
+  <select id="f-muni" onchange="applyFilters()"><option value="">All municipalities</option></select>
+  <select id="f-year" onchange="applyFilters()">
+    <option value="2024">2024</option><option value="2023">2023</option>
+    <option value="2022">2022</option><option value="2021">2021</option><option value="2020">2020</option>
+  </select>
+  <button class="btn btn-green" onclick="exportExcel()">Export to Excel</button>
+  <span id="status" style="font-size:12px;color:#888"></span>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="filters">
+      <label>Min employees</label>
+      <input type="number" id="f-emp" placeholder="e.g. 10" min="0" oninput="applyFilters()">
+      <label>Avg salary (€/mo)</label>
+      <div class="filter-row">
+        <input type="number" id="f-sal-min" placeholder="Min €" oninput="applyFilters()">
+        <input type="number" id="f-sal-max" placeholder="Max €" oninput="applyFilters()">
+      </div>
+      <label>Min revenue (€)</label>
+      <div class="filter-row">
+        <input type="number" id="f-rev-min" placeholder="Min" oninput="applyFilters()">
+        <input type="number" id="f-rev-max" placeholder="Max" oninput="applyFilters()">
+      </div>
+      <label>EBT (€)</label>
+      <div class="filter-row">
+        <input type="number" id="f-ebt-min" placeholder="Min" oninput="applyFilters()">
+        <input type="number" id="f-ebt-max" placeholder="Max" oninput="applyFilters()">
+      </div>
+      <label>EBT margin %</label>
+      <div class="filter-row">
+        <input type="number" id="f-margin-min" placeholder="Min %" oninput="applyFilters()">
+        <input type="number" id="f-margin-max" placeholder="Max %" oninput="applyFilters()">
+      </div>
+      <label>CEO gender</label>
+      <select id="f-ceo" onchange="applyFilters()">
+        <option value="">Any</option>
+        <option value="Female">Female</option>
+        <option value="Male">Male</option>
+      </select>
+      <label style="margin-top:10px">
+        <input type="checkbox" id="f-watchlist" onchange="applyFilters()"> Watchlist only
+      </label>
+    </div>
+    <div class="results-header">
+      <span id="result-count">Loading...</span>
+      <button class="btn" style="font-size:11px;padding:3px 8px" onclick="clearFilters()">Clear filters</button>
+    </div>
+    <div class="company-list" id="company-list"></div>
+  </div>
+
+  <div class="content">
+    <div class="tabs">
+      <div class="tab active" onclick="showTab('overview',this)">Overview</div>
+      <div class="tab" onclick="showTab('detail',this)">Company detail</div>
+      <div class="tab" onclick="showTab('charts',this)">Charts</div>
+    </div>
+
+    <!-- OVERVIEW TAB -->
+    <div id="view-overview" class="view active">
+      <div class="metrics" id="ov-metrics">
+        <div class="metric"><div class="metric-label">Companies shown</div><div class="metric-value" id="ov-count">—</div></div>
+        <div class="metric"><div class="metric-label">Total revenue</div><div class="metric-value" id="ov-rev">—</div></div>
+        <div class="metric"><div class="metric-label">Total employees</div><div class="metric-value" id="ov-emp">—</div></div>
+        <div class="metric"><div class="metric-label">Avg EBT margin</div><div class="metric-value" id="ov-margin">—</div></div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title">Top by revenue</div>
+          <div id="ov-top-rev"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Top by employees</div>
+          <div id="ov-top-emp"></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title">Sector breakdown</div>
+          <div class="chart-wrap" style="height:220px"><canvas id="ov-sector-chart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Revenue distribution</div>
+          <div class="chart-wrap" style="height:220px"><canvas id="ov-rev-chart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DETAIL TAB -->
+    <div id="view-detail" class="view">
+      <div id="detail-content" class="empty">Select a company from the list</div>
+    </div>
+
+    <!-- CHARTS TAB -->
+    <div id="view-charts" class="view">
+      <div class="grid2">
+        <div class="card"><div class="card-title">Top 10 by revenue</div><div class="chart-wrap" style="height:300px"><canvas id="ch-rev"></canvas></div></div>
+        <div class="card"><div class="card-title">EBT margin % (top 20)</div><div class="chart-wrap" style="height:300px"><canvas id="ch-margin"></canvas></div></div>
+        <div class="card"><div class="card-title">Top 10 by employees</div><div class="chart-wrap" style="height:300px"><canvas id="ch-emp"></canvas></div></div>
+        <div class="card"><div class="card-title">Top 10 by avg wage</div><div class="chart-wrap" style="height:300px"><canvas id="ch-wage"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SB_URL = 'https://fxapkoylegdibrhsajbo.supabase.co';
+const SB_KEY = 'sb_publishable_gZir2IvzDxdf39kOzAmVGQ_PKK4pKdA';
+const HEADERS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` };
+
+let allCompanies = [], filteredCompanies = [], financialsCache = {}, selectedJar = null, charts = {};
+let searchTimeout = null;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function cleanName(name) {
+  if (!name) return '—';
+  // Strip leading/trailing quotes, normalize doubled quotes
+  return name.replace(/^"+|"+$/g, '').replace(/""/g, '"').trim();
+}
+function shortName(c) {
+  const n = cleanName(c.company_name);
+  // Strip legal form prefix
+  return n.replace(/^(UAB|AB|MB|VšĮ|IĮ|VĮ|ŽŪB|TŪB|KŪB)\s+/i, '');
+}
+function fmt(n) {
+  if (n == null) return '—';
+  const abs = Math.abs(n);
+  let s = abs >= 1e9 ? (abs/1e9).toFixed(1)+'B' : abs >= 1e6 ? (abs/1e6).toFixed(1)+'M' : abs >= 1e3 ? (abs/1e3).toFixed(0)+'K' : Math.round(abs).toString();
+  return (n < 0 ? '-' : '') + s;
+}
+function fmtN(n) { if (!n) return '—'; return Math.round(n).toLocaleString(); }
+function pct(n, d) { if (n == null || !d) return null; return Math.round(n/d*100); }
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+// Custom sort: letters A-Z first, numbers/symbols last
+function sortCompanyName(a, b) {
+  const na = (a.company_name || '').trim();
+  const nb = (b.company_name || '').trim();
+  const aNum = /^[0-9]/.test(na);
+  const bNum = /^[0-9]/.test(nb);
+  if (aNum && !bNum) return 1;   // a is number → goes after b
+  if (!aNum && bNum) return -1;  // b is number → a goes first
+  return na.localeCompare(nb, 'lt', { sensitivity: 'base' });
+}
+
+// ── API calls ─────────────────────────────────────────────────────────────────
+async function sbGet(path) {
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/' + path, {
+      method: 'GET',
+      mode: 'cors',
+      headers: { ...HEADERS, 'Prefer': 'count=none' }
+    });
+    if (!r.ok) {
+      console.error('sbGet failed:', r.status, path);
+      return [];
+    }
+    return r.json();
+  } catch(e) {
+    console.error('sbGet error:', e.message, path);
+    // Show CORS error hint if fetch fails
+    if (e.message && e.message.includes('fetch')) {
+      setStatus('⚠ Connection error — open this file from SharePoint, not locally');
+    }
+    return [];
+  }
+}
+
+// ── Initialise ────────────────────────────────────────────────────────────────
+// Hard fallback — overlay always hides after 20s max
+setTimeout(() => { hideOverlay(); }, 5000);
+
+const CACHE_KEY = 'companydb_v3';
+const CACHE_HOURS = 12;
+const ALL_YEARS = [2024,2023,2022,2021,2020,2019,2018,2017,2016,2015];
+
+function setLoadProgress(pct, msg) {
+  const bar = document.getElementById('load-bar');
+  const el = document.getElementById('load-msg');
+  if (bar) bar.style.width = pct + '%';
+  if (el && msg) el.textContent = msg;
+}
+
+function hideOverlay() {
+  const ov = document.getElementById('loading-overlay');
+  if (!ov) return;
+  ov.style.transition = 'opacity 0.5s';
+  ov.style.opacity = '0';
+  setTimeout(function() { if (ov.parentNode) ov.parentNode.removeChild(ov); }, 500);
+}
+
+function saveCache(companies, fins) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), companies: companies, fins: fins })); } catch(e) {}
+}
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (Date.now() - obj.ts > CACHE_HOURS * 3600000) { localStorage.removeItem(CACHE_KEY); return null; }
+    return obj;
+  } catch(e) { return null; }
+}
+
+function populateFilters(all) {
+  const sectorMap = {};
+  all.forEach(function(c) { if (c.evrk_code && c.evrk_name) sectorMap[c.evrk_code] = c.evrk_name; });
+  window.sectorOptions = Object.entries(sectorMap).map(function(e) { return { code: e[0], name: e[1] }; }).sort(function(a,b) {
+    const an = /^[0-9]/.test(a.name), bn = /^[0-9]/.test(b.name);
+    if (an && !bn) return 1; if (!an && bn) return -1;
+    return a.name.localeCompare(b.name, 'lt', { sensitivity: 'base' });
+  });
+  window.selectedSectorCode = '';
+  renderSectorDropdown(window.sectorOptions);
+  const munis = [...new Set(all.map(function(c) { return c.municipality; }).filter(Boolean))].sort();
+  const mf = document.getElementById('f-muni');
+  if (mf) { mf.innerHTML = '<option value="">All municipalities</option>'; munis.forEach(function(m) { const o = document.createElement('option'); o.value = m; o.textContent = m; mf.appendChild(o); }); }
+}
+
+async function loadYearFin(year) {
+  if (financialsCache[year]) return;
+  financialsCache[year] = {};
+  let page = 0;
+  while (true) {
+    const rows = await sbGet('financials?select=jar_kodas,fin_year,revenue,ebt,net_profit,total_assets,equity,total_liabilities&fin_year=eq.' + year + '&limit=1000&offset=' + (page * 1000));
+    if (!rows.length) break;
+    rows.forEach(function(f) { financialsCache[year][f.jar_kodas] = f; });
+    if (rows.length < 1000) break;
+    page++;
+  }
+}
+
+async function init() {
+  setLoadProgress(0, 'Connecting to database...');
+
+  // Try cache
+  const cached = loadCache();
+  if (cached) {
+    allCompanies = cached.companies;
+    financialsCache = cached.fins || {};
+    setLoadProgress(95, 'Loading from cache (' + allCompanies.length.toLocaleString() + ' companies)...');
+    populateFilters(allCompanies);
+    setLoadProgress(100, 'Ready!');
+    setTimeout(function() {
+      hideOverlay();
+      try { applyFilters(); } catch(e) { console.error(e); }
+    }, 300);
+    // Load any missing years in background
+    ALL_YEARS.forEach(function(y) { if (!financialsCache[y]) loadYearFin(y); });
+    return;
+  }
+
+  // Load companies
+  setLoadProgress(5, 'Loading companies...');
+  let page = 0, all = [];
+  while (true) {
+    const rows = await sbGet('companies?select=jar_kodas,company_name,municipality,evrk_code,evrk_name,employees,avg_wage,has_board,board_women,ceo_gender,in_watchlist&order=company_name&limit=1000&offset=' + (page * 1000));
+    if (!rows.length) break;
+    all = all.concat(rows);
+    setLoadProgress(5 + Math.min(20, Math.round(all.length / 35000 * 20)), 'Loading companies... ' + all.length.toLocaleString());
+    if (rows.length < 1000) break;
+    page++;
+  }
+  allCompanies = all;
+  setLoadProgress(25, all.length.toLocaleString() + ' companies loaded. Loading 2024 financials...');
+
+  // Load 2024 + 2023 first
+  await loadYearFin(2024);
+  setLoadProgress(50, 'Loading 2023 financials...');
+  await loadYearFin(2023);
+  setLoadProgress(65, 'Preparing dashboard...');
+
+  populateFilters(all);
+  setLoadProgress(80, 'Rendering...');
+
+  // Show dashboard
+  hideOverlay();
+  setTimeout(() => { try { applyFilters(); } catch(e) { console.error('applyFilters:', e); } }, 100);
+  setStatus(all.length.toLocaleString() + ' companies | loading history in background...');
+
+  // Load remaining years in background
+  const restYears = ALL_YEARS.filter(function(y) { return y !== 2024 && y !== 2023; });
+  for (let i = 0; i < restYears.length; i++) {
+    await loadYearFin(restYears[i]);
+    setStatus(all.length.toLocaleString() + ' companies | loaded ' + restYears[i] + ' financials...');
+  }
+
+  // Save cache
+  saveCache(all, financialsCache);
+  setStatus(all.length.toLocaleString() + ' companies | all years loaded | cached for 12h');
+}
+
+
+async function loadFinancials2023() {
+  if (financialsCache[2023]) return;
+  financialsCache[2023] = {};
+  let page = 0;
+  while (true) {
+    const rows = await sbGet(`financials?select=jar_kodas,fin_year,revenue,ebt,net_profit,total_assets,equity,total_liabilities&fin_year=eq.2023&limit=1000&offset=${page*1000}`);
+    if (!rows.length) break;
+    rows.forEach(f => { financialsCache[2023][f.jar_kodas] = f; });
+    if (rows.length < 1000) break;
+    page++;
+  }
+}
+
+async function loadFinancials() {
+  const year = parseInt(document.getElementById('f-year').value);
+  if (financialsCache[year]) return;
+  setStatus(`Loading ${year} financials...`);
+  let page = 0, all = [];
+  while (true) {
+    const rows = await sbGet(`financials?select=jar_kodas,fin_year,revenue,net_profit,total_assets,equity,total_liabilities&fin_year=eq.${year}&limit=1000&offset=${page*1000}`);
+    if (!rows.length) break;
+    all = all.concat(rows);
+    if (rows.length < 1000) break;
+    page++;
+  }
+  financialsCache[year] = {};
+  all.forEach(f => { financialsCache[year][f.jar_kodas] = f; });
+  setStatus(`${allCompanies.length.toLocaleString()} companies | ${all.length.toLocaleString()} with ${year} financials`);
+}
+
+// ── Filtering ─────────────────────────────────────────────────────────────────
+// ── Company autocomplete ──────────────────────────────────────────────────────
+let companySearchTimeout = null;
+window.selectedCompanyJar = '';
+
+function debounceCompany() {
+  clearTimeout(companySearchTimeout);
+  companySearchTimeout = setTimeout(applyFilters, 300);
+}
+
+function renderCompanyDD(val) {
+  const q = (val !== undefined ? String(val) : document.getElementById('search').value).toLowerCase().trim();
+  const dd = document.getElementById('company-dd');
+  if (!dd) return;
+  const matches = q
+    ? [...allCompanies].filter(c => c.company_name?.toLowerCase().includes(q) || c.jar_kodas?.includes(q)).sort(sortCompanyName).slice(0, 80)
+    : [...allCompanies].sort(sortCompanyName).slice(0, 100);
+  if (!matches.length) {
+    dd.innerHTML = `<div style="padding:8px 12px;font-size:13px;color:#888">No matches for "${q}"</div>`;
+    dd.style.display = 'block';
+    return;
+  }
+  const clearRow = q ? `<div onmousedown="event.preventDefault()" onclick="clearCompanySearch()"
+    style="padding:7px 12px;cursor:pointer;font-size:12px;color:#666;border-bottom:1px solid #f0f0f0;background:#fafafa">✕ Clear — show all</div>` : '';
+  dd.innerHTML = clearRow + matches.map(c => {
+    const name = c.company_name || c.jar_kodas;
+    const hl = q ? name.replace(new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi'), '<strong>$1</strong>') : name;
+    return `<div onmousedown="event.preventDefault()"
+      onclick="pickCompany('${c.jar_kodas}','${name.replace(/\\/g,'\\\\').replace(/'/g,"\'")}' )"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+      onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''"
+      title="${name}">${hl}</div>`;
+  }).join('');
+  if (!q && matches.length === 100) dd.innerHTML += `<div style="padding:7px 12px;font-size:11px;color:#aaa;text-align:center">Showing first 100 — type to search all ${allCompanies.length.toLocaleString()}</div>`;
+  dd.style.display = 'block';
+}
+
+function clearCompanySearch() {
+  document.getElementById('search').value = '';
+  document.getElementById('company-dd').style.display = 'none';
+  applyFilters();
+}
+
+function pickCompany(jar, name) {
+  document.getElementById('search').value = name;
+  document.getElementById('company-dd').style.display = 'none';
+  applyFilters();
+  setTimeout(() => selectCompany(jar), 200);
+}
+
+function showCompanyDD() { renderCompanyDD(); document.getElementById('company-dd').style.display = 'block'; }
+function hideCompanyDD() { setTimeout(() => { document.getElementById('company-dd').style.display = 'none'; }, 150); }
+
+function debounceSearch(val) {
+  clearTimeout(companySearchTimeout);
+  renderCompanyDD(val);
+  clearTimeout(companySearchTimeout);
+  companySearchTimeout = setTimeout(applyFilters, 300);
+}
+async function applyFilters() {
+  await loadFinancials();
+  const year = parseInt(document.getElementById('f-year').value);
+  const fin = financialsCache[year] || {};
+  const q = document.getElementById('search').value.toLowerCase();
+  const sector = window.selectedSectorCode || '';
+  const muni = document.getElementById('f-muni').value;
+  const minEmp = parseInt(document.getElementById('f-emp').value) || 0;
+  const minRev = parseFloat(document.getElementById('f-rev-min').value) || 0;
+  const maxRev = parseFloat(document.getElementById('f-rev-max').value) || Infinity;
+  const minEbt = parseFloat(document.getElementById('f-ebt-min').value);
+  const maxEbt = parseFloat(document.getElementById('f-ebt-max').value);
+  const minSal = parseFloat(document.getElementById('f-sal-min').value) || 0;
+  const maxSal = parseFloat(document.getElementById('f-sal-max').value) || Infinity;
+  const minMargin = parseFloat(document.getElementById('f-margin-min').value);
+  const maxMargin = parseFloat(document.getElementById('f-margin-max').value);
+  const ceo = document.getElementById('f-ceo').value;
+  const watchlistOnly = document.getElementById('f-watchlist').checked;
+
+  filteredCompanies = allCompanies.filter(c => {
+    if (q && !c.company_name?.toLowerCase().includes(q) && !c.jar_kodas?.includes(q)) return false;
+    if (sector && c.evrk_code !== sector) return false;
+    if (muni && c.municipality !== muni) return false;
+    if (minEmp && (c.employees || 0) < minEmp) return false;
+    if (ceo && c.ceo_gender !== ceo) return false;
+    if (watchlistOnly && !c.in_watchlist) return false;
+    const f = fin[c.jar_kodas];
+    if (minRev && (!f || (f.revenue || 0) < minRev)) return false;
+    if (maxRev < Infinity && f && (f.revenue || 0) > maxRev) return false;
+    if (!isNaN(minMargin) && f && f.revenue) {
+      const m = pct(f.net_profit, f.revenue);
+      if (m < minMargin) return false;
+    }
+    if (!isNaN(maxMargin) && f && f.revenue) {
+      const m = pct(f.net_profit, f.revenue);
+      if (m > maxMargin) return false;
+    }
+    return true;
+  });
+
+  filteredCompanies.sort(sortCompanyName);
+  document.getElementById('result-count').textContent = `${filteredCompanies.length.toLocaleString()} companies`;
+  renderList();
+  updateOverview();
+  updateSectorTable();
+  if (document.getElementById('view-charts').classList.contains('active')) renderCharts();
+}
+
+function clearFilters() {
+  ['f-emp','f-sal-min','f-sal-max','f-rev-min','f-rev-max','f-ebt-min','f-ebt-max','f-margin-min','f-margin-max','search'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  ['f-sector','f-muni','f-ceo','f-year'].forEach(id => { const el=document.getElementById(id); if(el) el.value = id==='f-year'?'2024':''; });
+  const tb=document.getElementById('f-sector-topbar'); if(tb) tb.value='';
+  window.selectedSectorCode='';
+  document.getElementById('f-watchlist').checked = false;
+  applyFilters();
+}
+
+// ── Render list ───────────────────────────────────────────────────────────────
+function renderList() {
+  const year = parseInt(document.getElementById('f-year').value);
+  const fin = financialsCache[year] || {};
+  const list = document.getElementById('company-list');
+  const show = filteredCompanies.slice(0, 200);
+  list.innerHTML = show.map(c => {
+    const f = fin[c.jar_kodas];
+    const m = f ? pct(f.ebt, f.revenue) : null;
+    return `<div class="company-item${c.jar_kodas===selectedJar?' active':''}" onclick="selectCompany('${c.jar_kodas}')">
+      <div class="cname">${(c.company_name||c.jar_kodas).replace(/^"|"$/g,'').trim()}</div>
+      <div class="cmeta">
+        <span>${c.municipality||'—'}</span>
+        <span class="crev">${fmt(f?.revenue)}</span>
+        ${m!=null?`<span class="${m>=0?'cmargin-pos':'cmargin-neg'}">${m}%</span>`:''}
+        <span>${c.employees||'—'} emp</span>
+      </div>
+    </div>`;
+  }).join('');
+  if (filteredCompanies.length > 200) {
+    list.innerHTML += `<div style="padding:10px;text-align:center;font-size:12px;color:#888">Showing 200 of ${filteredCompanies.length.toLocaleString()} — refine filters to see more</div>`;
+  }
+}
+
+// ── Overview ──────────────────────────────────────────────────────────────────
+function updateOverview() {
+  const year = parseInt(document.getElementById('f-year').value);
+  const fin = financialsCache[year] || {};
+  let totalRev=0, totalEmp=0, margins=[];
+  filteredCompanies.forEach(c => {
+    const f = fin[c.jar_kodas];
+    if (f?.revenue) totalRev += f.revenue;
+    if (c.employees) totalEmp += c.employees;
+    const m = f ? pct(f.ebt, f.revenue) : null;
+    if (m != null) margins.push(m);
+  });
+  const avgMargin = margins.length ? Math.round(margins.reduce((a,b)=>a+b,0)/margins.length) : null;
+  document.getElementById('ov-count').textContent = filteredCompanies.length.toLocaleString();
+  document.getElementById('ov-rev').textContent = fmt(totalRev||null);
+  document.getElementById('ov-emp').textContent = fmtN(totalEmp||null);
+  const mel = document.getElementById('ov-margin');
+  mel.textContent = avgMargin!=null ? avgMargin+'%' : '—';
+  mel.style.color = avgMargin>0?'#16a34a':avgMargin<0?'#dc2626':'inherit';
+
+  // Top by revenue
+  const byRev = [...filteredCompanies].filter(c=>fin[c.jar_kodas]?.revenue).sort((a,b)=>(fin[b.jar_kodas]?.revenue||0)-(fin[a.jar_kodas]?.revenue||0)).slice(0,8);
+  const maxRev = byRev[0] ? fin[byRev[0].jar_kodas]?.revenue : 1;
+  document.getElementById('ov-top-rev').innerHTML = byRev.map(c => {
+    const f = fin[c.jar_kodas];
+    const clean = (c.company_name||'').replace(/["\']/g,'').replace(/^(UAB|AB|MB|VšĮ|IĮ|VĮ|ŽŪB)\s+/i,'').trim();
+    return `<div class="sparkbar" title="${(c.company_name||'').replace(/"/g,'')}">
+      <div class="sbl" style="width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a1a1a">${clean}</div>
+      <div class="sbw"><div class="sbb" style="width:${Math.round((f.revenue||0)/maxRev*100)}%;background:#2563eb"></div></div>
+      <div class="sbv">${fmt(f.revenue)}</div>
+    </div>`;
+  }).join('');
+
+  // Top by employees
+  const byEmp = [...filteredCompanies].filter(c=>c.employees).sort((a,b)=>b.employees-a.employees).slice(0,8);
+  const maxEmp = byEmp[0]?.employees || 1;
+  document.getElementById('ov-top-emp').innerHTML = byEmp.map(c => {
+    const clean = (c.company_name||'').replace(/["\']/g,'').replace(/^(UAB|AB|MB|VšĮ|IĮ|VĮ|ŽŪB)\s+/i,'').trim();
+    return `<div class="sparkbar" title="${(c.company_name||'').replace(/"/g,'')}">
+      <div class="sbl" style="width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a1a1a">${clean}</div>
+      <div class="sbw"><div class="sbb" style="width:${Math.round(c.employees/maxEmp*100)}%;background:#059669"></div></div>
+      <div class="sbv">${c.employees}</div>
+    </div>`;
+  }).join('');
+
+  updateOverviewCharts();
+}
+
+function updateOverviewCharts() {
+  const year = parseInt(document.getElementById('f-year').value);
+  const fin = financialsCache[year] || {};
+
+  // Sector breakdown (top 8)
+  const sectorRev = {};
+  filteredCompanies.forEach(c => {
+    const f = fin[c.jar_kodas];
+    if (!c.evrk_name || !f?.revenue) return;
+    const name = c.evrk_name.substring(0,30);
+    sectorRev[name] = (sectorRev[name]||0) + f.revenue;
+  });
+  const topSectors = Object.entries(sectorRev).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  if (charts['ov-sector']) charts['ov-sector'].destroy();
+  charts['ov-sector'] = new Chart(document.getElementById('ov-sector-chart'), {
+    type:'doughnut',
+    data:{ labels: topSectors.map(s=>s[0]), datasets:[{ data: topSectors.map(s=>Math.round(s[1]/1000)), backgroundColor:['#2563eb','#059669','#d97706','#dc2626','#7c3aed','#db2777','#65a30d','#6b7280'] }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ font:{size:10}, boxWidth:10 } } } }
+  });
+
+  // Revenue distribution
+  const bands = {'<100K':0,'100K-500K':0,'500K-2M':0,'2M-10M':0,'10M-50M':0,'>50M':0};
+  filteredCompanies.forEach(c => {
+    const r = fin[c.jar_kodas]?.revenue;
+    if (!r) return;
+    if (r<100000) bands['<100K']++;
+    else if (r<500000) bands['100K-500K']++;
+    else if (r<2000000) bands['500K-2M']++;
+    else if (r<10000000) bands['2M-10M']++;
+    else if (r<50000000) bands['10M-50M']++;
+    else bands['>50M']++;
+  });
+  if (charts['ov-rev']) charts['ov-rev'].destroy();
+  charts['ov-rev'] = new Chart(document.getElementById('ov-rev-chart'), {
+    type:'bar',
+    data:{ labels:Object.keys(bands), datasets:[{ data:Object.values(bands), backgroundColor:'#2563eb', borderRadius:4 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{ ticks:{font:{size:10}} }, x:{ ticks:{font:{size:10}} } } }
+  });
+
+}
+
+// ── Company detail ────────────────────────────────────────────────────────────
+function rebuildFinTable(jar, sodra) {
+  var thead = document.getElementById('det-fin-thead');
+  var tbody = document.getElementById('det-fin-tbody');
+  if (!thead || !tbody) return;
+
+  var detYears = Object.keys(financialsCache).map(Number).sort(function(a,b){return a-b;});
+  var sodraByYr = {};
+  sodra.forEach(function(x) {
+    if (!sodraByYr[x.period_year]) sodraByYr[x.period_year] = {sal:[],emp:[]};
+    if (x.avg_salary) sodraByYr[x.period_year].sal.push(x.avg_salary);
+    if (x.employees_avg) sodraByYr[x.period_year].emp.push(x.employees_avg);
+  });
+
+  var thS = 'padding:7px 8px;background:#f4f4f4;border-bottom:2px solid #e0e0e0;text-align:right;font-size:11px;font-weight:600;white-space:nowrap;color:#444;';
+  var tdS = 'padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:12px;';
+  var cols = ['Year','Revenue','EBT','Net Profit','Total Assets','Equity','EBT Margin','Net Margin','ROE','ROA','Avg Employees','Avg Salary'];
+  thead.innerHTML = '<tr>' + cols.map(function(h,i){ return '<th style="'+thS+(i===0?'text-align:left;':'')+'">'+h+'</th>'; }).join('') + '</tr>';
+
+  var finTableRows = '';
+  detYears.forEach(function(yr) {
+    var f = (financialsCache[yr]||{})[jar];
+    if (!f) return;
+    var sd = sodraByYr[yr];
+    var emp = sd && sd.emp.length ? Math.round(sd.emp.reduce(function(a,b){return a+b;},0)/sd.emp.length) : '';
+    var sal = sd && sd.sal.length ? '€'+Math.round(sd.sal.reduce(function(a,b){return a+b;},0)/sd.sal.length) : '';
+    var ebtM = f.revenue ? (Math.round((f.ebt||0)/f.revenue*1000)/10)+'%' : '';
+    var netM = f.revenue ? (Math.round((f.net_profit||0)/f.revenue*1000)/10)+'%' : '';
+    var roe  = f.equity ? (Math.round((f.net_profit||0)/f.equity*1000)/10)+'%' : '';
+    var roa  = f.total_assets ? (Math.round((f.net_profit||0)/f.total_assets*1000)/10)+'%' : '';
+    var ebtColor = (f.ebt||0) < 0 ? '#dc2626' : (f.ebt||0) > 0 ? '#16a34a' : 'inherit';
+    var vals = [yr, fmt(f.revenue), fmt(f.ebt), fmt(f.net_profit), fmt(f.total_assets), fmt(f.equity), ebtM, netM, roe, roa, emp, sal];
+    finTableRows += '<tr>' + vals.map(function(v,i){
+      var style = tdS + (i===0?'text-align:left;font-weight:600;':'') + (i===2?'color:'+ebtColor+';':'');
+      return '<td style="'+style+'">'+(v||'—')+'</td>';
+    }).join('') + '</tr>';
+  });
+  tbody.innerHTML = finTableRows;
+}
+
+async function selectCompany(jar) {
+  selectedJar = jar;
+  renderList();
+
+  // Show detail tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const detailTab = Array.from(document.querySelectorAll('.tab')).find(t => t.textContent.trim() === 'Company detail');
+  if (detailTab) detailTab.classList.add('active');
+  const detailView = document.getElementById('view-detail');
+  if (detailView) detailView.classList.add('active');
+
+  const c = allCompanies.find(x => x.jar_kodas === jar);
+  if (!c) return;
+
+  document.getElementById('detail-content').innerHTML = '<div class="loading">Loading data...</div>';
+
+  window._lastSodra = []; // reset
+  const [fins, sodra] = await Promise.all([
+    sbGet(`financials?select=fin_year,revenue,ebt,net_profit,total_assets,equity,total_liabilities&jar_kodas=eq.${jar}&order=fin_year`),
+    sbGet(`sodra_workforce?select=period_year,period_month,employees_avg,avg_salary&jar_kodas=eq.${jar}&order=period_year,period_month`)
+  ]);
+
+  const year = parseInt(document.getElementById('f-year').value);
+  const f = fins.find(x => x.fin_year === year);
+  const prevF = fins.find(x => x.fin_year === year - 1);
+  const margin = f && f.revenue ? pct(f.ebt, f.revenue) : null;
+  const revGrowth = f && prevF && f.revenue && prevF.revenue ? Math.round((f.revenue - prevF.revenue) / Math.abs(prevF.revenue) * 100) : null;
+  window._lastSodra = sodra; // store for export
+  const latestSodra = sodra.length ? sodra[sodra.length - 1] : null;
+  const maxRev = fins.length ? Math.max(...fins.map(x => Math.abs(x.revenue || 0))) : 1;
+
+  const rows = [
+    ['JAR code', c.jar_kodas],
+    ['Legal form', c.legal_form || '—'],
+    ['Municipality', c.municipality || '—'],
+    ['EVRK sector', (c.evrk_name || '—') + (c.evrk_code ? ' (' + c.evrk_code + ')' : '')],
+    ['CEO gender', c.ceo_gender ? '<span class="badge ' + (c.ceo_gender === 'Female' ? 'bf' : 'bm') + '">' + c.ceo_gender + '</span>' : '—'],
+    ['Has board', c.has_board ? 'Yes' + (c.board_women != null ? ' (' + c.board_women + ' women)' : '') : 'No'],
+  ];
+
+  const sparkbars = fins.map(x => {
+    const w = maxRev ? Math.round(Math.abs(x.revenue || 0) / maxRev * 100) : 0;
+    const col = (x.ebt || 0) < 0 ? '#dc2626' : '#2563eb';
+    const ebtCol = (x.ebt || 0) < 0 ? '#dc2626' : '#16a34a';
+    return '<div class="sparkbar">' +
+      '<div class="sbl" style="width:36px;text-align:right;font-size:11px">' + x.fin_year + '</div>' +
+      '<div class="sbw"><div class="sbb" style="width:' + w + '%;background:' + col + '"></div></div>' +
+      '<div class="sbv">' + fmt(x.revenue) + '</div>' +
+      '<div style="width:52px;text-align:right;font-size:10px;color:' + ebtCol + '">' + fmt(x.ebt) + '</div>' +
+      '</div>';
+  }).join('');
+
+  document.getElementById('detail-content').innerHTML =
+    '<div style="margin-bottom:14px">' +
+      '<div style="font-size:18px;font-weight:600;margin-bottom:4px">' + (c.company_name || c.jar_kodas) + '</div>' +
+      '<div style="font-size:12px;color:#666">' + c.jar_kodas + ' &bull; ' + (c.municipality || '—') + ' &bull; ' + (c.evrk_name || '—') + '</div>' +
+    '</div>' +
+    '<div class="metrics" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">' +
+      '<div class="metric"><div class="metric-label">Revenue ' + year + '</div><div class="metric-value" style="font-size:18px">' + fmt(f && f.revenue) + '</div>' + (revGrowth != null ? '<div class="metric-sub ' + (revGrowth >= 0 ? 'pos' : 'neg') + '">' + (revGrowth >= 0 ? '+' : '') + revGrowth + '% vs ' + (year - 1) + '</div>' : '<div class="metric-sub">—</div>') + '</div>' +
+      '<div class="metric"><div class="metric-label">EBT ' + year + '</div><div class="metric-value" style="font-size:18px;color:' + ((f && f.ebt < 0) ? '#dc2626' : (f && f.ebt > 0) ? '#16a34a' : 'inherit') + '">' + fmt(f && f.ebt) + '</div>' + (margin != null ? '<div class="metric-sub">' + margin + '% margin</div>' : '<div class="metric-sub">—</div>') + '</div>' +
+      '<div class="metric"><div class="metric-label">Total assets ' + year + '</div><div class="metric-value" style="font-size:18px">' + fmt(f && f.total_assets) + '</div><div class="metric-sub">Equity ' + fmt(f && f.equity) + '</div></div>' +
+      '<div class="metric"><div class="metric-label">Employees (latest)</div><div class="metric-value" style="font-size:18px">' + (latestSodra && latestSodra.employees_avg || c.employees || '—') + '</div><div class="metric-sub">' + (latestSodra && latestSodra.avg_salary ? '€' + Math.round(latestSodra.avg_salary) + '/mo avg' : '—') + '</div></div>' +
+    '</div>' +
+    '<div class="grid2">' +
+      '<div class="card"><div class="card-title">Company info</div>' + rows.map(function(r) { return '<div class="detail-row"><span class="detail-key">' + r[0] + '</span><span class="detail-val">' + r[1] + '</span></div>'; }).join('') + '</div>' +
+      '<div class="card"><div class="card-title">Revenue & EBT history</div>' + sparkbars + '</div>' +
+    '</div>' +
+    '<div class="grid2" style="margin-top:12px">' +
+      '<div class="card"><div class="card-title">Revenue & EBT trend</div><div class="chart-wrap" style="height:200px"><canvas id="det-fin-chart"></canvas></div></div>' +
+      '<div class="card"><div class="card-title">Employees & avg salary</div><div class="chart-wrap" style="height:200px"><canvas id="det-emp-chart"></canvas></div></div>' +
+    '</div>' +
+    '<div class="card" style="margin-top:12px"><div class="card-title">Monthly avg salary history (€)</div><div class="chart-wrap" style="height:160px"><canvas id="det-sal-chart"></canvas></div></div>' +
+    '<div class="card" style="margin-top:12px" id="det-fin-table-wrap"><div class="card-title">Financial summary</div><div style="overflow-x:auto"><table id="det-fin-table" style="width:100%;border-collapse:collapse;font-size:12px"><thead id="det-fin-thead"></thead><tbody id="det-fin-tbody"></tbody></table></div></div>';
+
+  if (charts['det-fin']) charts['det-fin'].destroy();
+  charts['det-fin'] = new Chart(document.getElementById('det-fin-chart'), {
+    type: 'line',
+    data: {
+      labels: fins.map(function(x) { return x.fin_year; }),
+      datasets: [
+        { label: 'Revenue', data: fins.map(function(x) { return Math.round((x.revenue || 0) / 1000); }), borderColor: '#2563eb', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3 },
+        { label: 'EBT', data: fins.map(function(x) { return x.ebt != null ? Math.round(x.ebt / 1000) : null; }), borderColor: '#16a34a', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, borderDash: [4, 2] }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { font: { size: 10 }, boxWidth: 10 } } }, scales: { y: { ticks: { callback: function(v) { return v + 'K'; }, font: { size: 10 } } }, x: { ticks: { font: { size: 10 } } } } }
+  });
+
+  if (charts['det-emp']) charts['det-emp'].destroy();
+  charts['det-emp'] = new Chart(document.getElementById('det-emp-chart'), {
+    type: 'line',
+    data: {
+      labels: sodra.map(function(x) { return x.period_year + '-' + String(x.period_month).padStart(2, '0'); }),
+      datasets: [
+        { label: 'Employees', data: sodra.map(function(x) { return x.employees_avg; }), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,0.08)', borderWidth: 2, pointRadius: 2, fill: true, yAxisID: 'y' },
+        { label: 'Avg salary €', data: sodra.map(function(x) { return x.avg_salary ? Math.round(x.avg_salary) : null; }), borderColor: '#d97706', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, yAxisID: 'y2' }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { font: { size: 10 }, boxWidth: 10 } } }, scales: { y: { position: 'left', ticks: { font: { size: 10 } } }, y2: { position: 'right', ticks: { callback: function(v) { return '€' + v; }, font: { size: 10 } }, grid: { drawOnChartArea: false } }, x: { ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 } } } }
+  });
+
+  if (charts['det-sal']) charts['det-sal'].destroy();
+  charts['det-sal'] = new Chart(document.getElementById('det-sal-chart'), {
+    type: 'bar',
+    data: {
+      labels: sodra.map(function(x) { return x.period_year + '-' + String(x.period_month).padStart(2, '0'); }),
+      datasets: [{ label: 'Avg salary (€)', data: sodra.map(function(x) { return x.avg_salary ? Math.round(x.avg_salary) : null; }), backgroundColor: '#d97706', borderRadius: 3 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: function(v) { return '€' + v; }, font: { size: 10 } } }, x: { ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 16 } } } }
+  });
+
+  rebuildFinTable(jar, sodra);
+
+  setTimeout(function() { updateSectorTable(); }, 100);
+}
+
+
+// ── Sector / competitor table ─────────────────────────────────────────────────
+let sectorTableData = [];
+let sectorSortCol = 'rev24';
+let sectorSortDir = -1; // -1 = desc, 1 = asc
+let sectorTableJar = null; // highlighted company jar
+
+function updateSectorTable() {
+  const wrap = document.getElementById('sector-table-wrap');
+  if (!wrap) return; // not rendered yet
+  const year = parseInt(document.getElementById('f-year').value);
+  const fin24 = financialsCache[2024] || financialsCache[year] || {};
+  const fin23 = financialsCache[2023] || {};
+
+  let companies = [], title = '', highlightJar = null;
+
+  if (selectedJar) {
+    const c = allCompanies.find(x => x.jar_kodas === selectedJar);
+    if (c && c.evrk_code) {
+      companies = allCompanies.filter(x => x.evrk_code === c.evrk_code);
+      title = `Companies in sector: ${c.evrk_name || c.evrk_code} (${companies.length})`;
+      highlightJar = selectedJar;
+    }
+  } else if (window.selectedSectorCode) {
+    companies = allCompanies.filter(x => x.evrk_code === window.selectedSectorCode);
+    const sectorName = window.sectorOptions?.find(s => s.code === window.selectedSectorCode)?.name || window.selectedSectorCode;
+    title = `Companies in sector: ${sectorName} (${companies.length})`;
+  }
+
+  if (!companies.length) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  document.getElementById('sector-table-title').textContent = title;
+  sectorTableJar = highlightJar;
+
+  // Build rows
+  sectorTableData = companies.map(c => {
+    const f24 = fin24[c.jar_kodas] || {};
+    const f23 = fin23[c.jar_kodas] || {};
+    const rev24 = f24.revenue || null;
+    const rev23 = f23.revenue || null;
+    const ebt24 = f24.ebt != null ? f24.ebt : null;
+    const ebt23 = f23.ebt != null ? f23.ebt : null;
+    const revChg = rev24 && rev23 ? Math.round((rev24 - rev23) / Math.abs(rev23) * 100) : null;
+    const ebtM24 = rev24 && ebt24 != null ? Math.round(ebt24 / rev24 * 100) : null;
+    const ebtM23 = rev23 && ebt23 != null ? Math.round(ebt23 / rev23 * 100) : null;
+    return { jar: c.jar_kodas, name: c.company_name || c.jar_kodas, sector: c.evrk_name || '', rev24, rev23, revChg, ebt24, ebt23, ebtM24, ebtM23 };
+  });
+
+  // Load fin23 if not cached
+  if (!financialsCache[2023]) {
+    financialsCache[2023] = {};
+    sbGet(`financials?select=jar_kodas,fin_year,revenue,ebt,net_profit,total_assets,equity,total_liabilities&fin_year=eq.2023&limit=1000`)
+      .then(rows => {
+        rows.forEach(f => { financialsCache[2023][f.jar_kodas] = f; });
+        updateSectorTable();
+      });
+    return;
+  }
+
+  renderSectorTable();
+}
+
+function renderSectorTable() {
+  const col = sectorSortCol;
+  const dir = sectorSortDir;
+  const sorted = [...sectorTableData].sort((a, b) => {
+    const av = a[col] ?? (dir === -1 ? -Infinity : Infinity);
+    const bv = b[col] ?? (dir === -1 ? -Infinity : Infinity);
+    if (typeof av === 'string') return dir * av.localeCompare(bv, 'lt', { sensitivity: 'base' });
+    return dir * (bv - av);
+  });
+
+  // Update sort indicators
+  ['name','sector','rev24','rev23','revchg','ebt24','ebt23','ebtm24','ebtm23'].forEach(c => {
+    const th = document.getElementById(`sth-${c}`);
+    if (!th) return;
+    th.className = c === col ? (dir === -1 ? 'sort-desc' : 'sort-asc') : '';
+  });
+
+  const tbody = document.getElementById('sector-tbl-body');
+  tbody.innerHTML = sorted.map(r => {
+    const isHL = r.jar === sectorTableJar;
+    const revChgColor = r.revChg == null ? '' : r.revChg >= 0 ? 'color:#16a34a' : 'color:#dc2626';
+    const m24Color = r.ebtM24 == null ? '' : r.ebtM24 >= 0 ? 'color:#16a34a' : 'color:#dc2626';
+    const m23Color = r.ebtM23 == null ? '' : r.ebtM23 >= 0 ? 'color:#16a34a' : 'color:#dc2626';
+    return `<tr class="${isHL ? 'highlight' : ''}" onclick="selectCompany('${r.jar}')">
+      <td style="font-weight:${isHL?'600':'400'};max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${r.name}">${r.name}</td>
+      <td style="color:#666;max-width:140px;overflow:hidden;text-overflow:ellipsis;font-size:11px" title="${r.sector}">${r.sector.substring(0,25)}</td>
+      <td style="text-align:right">${fmt(r.rev24)}</td>
+      <td style="text-align:right;color:#888">${fmt(r.rev23)}</td>
+      <td style="text-align:right;${revChgColor}">${r.revChg != null ? (r.revChg > 0 ? '+' : '') + r.revChg + '%' : '—'}</td>
+      <td style="text-align:right">${fmt(r.ebt24)}</td>
+      <td style="text-align:right;color:#888">${fmt(r.ebt23)}</td>
+      <td style="text-align:right;${m24Color}">${r.ebtM24 != null ? r.ebtM24 + '%' : '—'}</td>
+      <td style="text-align:right;${m23Color}">${r.ebtM23 != null ? r.ebtM23 + '%' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('sector-tbl-count').textContent =
+    `${sorted.length} companies${sectorTableJar ? ' — selected company highlighted in blue' : ''}`;
+
+  // Scroll highlighted row into view
+  if (sectorTableJar) {
+    setTimeout(() => {
+      const hl = tbody.querySelector('tr.highlight');
+      if (hl) hl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 100);
+  }
+}
+
+function sortSectorTable(col) {
+  if (sectorSortCol === col) sectorSortDir *= -1;
+  else { sectorSortCol = col; sectorSortDir = -1; }
+  renderSectorTable();
+}
+
+function exportSectorTable() {
+  const rows = sectorTableData.map(r => ({
+    'Company': r.name,
+    'Sector': r.sector,
+    'Revenue 2024 (€)': r.rev24,
+    'Revenue 2023 (€)': r.rev23,
+    'Revenue change %': r.revChg,
+    'EBT 2024 (€)': r.ebt24,
+    'EBT 2023 (€)': r.ebt23,
+    'EBT margin 2024 %': r.ebtM24,
+    'EBT margin 2023 %': r.ebtM23,
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sector');
+  XLSX.writeFile(wb, `Sector_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── Export company detail to Excel ───────────────────────────────────────────
+function exportCompanyDetail() {
+  const c = allCompanies.find(x => x.jar_kodas === selectedJar);
+  if (!c) return;
+
+  const wb = XLSX.utils.book_new();
+  const sodra = window._lastSodra || [];
+
+  // Build annual SODRA aggregates (avg employees & avg salary per year)
+  const sodraByYear = {};
+  sodra.forEach(x => {
+    if (!sodraByYear[x.period_year]) sodraByYear[x.period_year] = { salaries: [], employees: [] };
+    if (x.avg_salary) sodraByYear[x.period_year].salaries.push(x.avg_salary);
+    if (x.employees_avg) sodraByYear[x.period_year].employees.push(x.employees_avg);
+  });
+  const avgSodra = (yr) => {
+    const d = sodraByYear[yr];
+    if (!d) return { emp: null, sal: null };
+    const emp = d.employees.length ? Math.round(d.employees.reduce((a,b)=>a+b,0)/d.employees.length) : null;
+    const sal = d.salaries.length ? Math.round(d.salaries.reduce((a,b)=>a+b,0)/d.salaries.length) : null;
+    return { emp, sal };
+  };
+
+  // ── Sheet 1: Company Detail ──────────────────────────────────────────────────
+  const years = Object.keys(financialsCache).map(Number).sort((a,b)=>a-b);
+
+  const detailRows = [];
+  // Company info header
+  detailRows.push(['COMPANY DETAIL', '']);
+  detailRows.push(['Company name', c.company_name || '']);
+  detailRows.push(['JAR code', c.jar_kodas]);
+  detailRows.push(['Legal form', c.legal_form || '']);
+  detailRows.push(['Municipality', c.municipality || '']);
+  detailRows.push(['EVRK sector', c.evrk_name || '']);
+  detailRows.push(['EVRK code', c.evrk_code || '']);
+  detailRows.push(['CEO gender', c.ceo_gender || '']);
+  detailRows.push(['Has board', c.has_board ? 'Yes' : 'No']);
+  detailRows.push([]);
+  // Financial table header
+  detailRows.push([
+    'Year', 'Revenue (€)', 'EBT (€)', 'Net Profit (€)',
+    'Total Assets (€)', 'Equity (€)', 'Total Liabilities (€)',
+    'EBT Margin %', 'Net Margin %', 'ROE %', 'ROA %',
+    'Avg Employees', 'Avg Salary (€/mo)'
+  ]);
+  years.forEach(yr => {
+    const f = (financialsCache[yr] || {})[c.jar_kodas];
+    if (!f) return;
+    const { emp, sal } = avgSodra(yr);
+    const ebtM = f.revenue ? Math.round((f.ebt||0)/f.revenue*1000)/10 : null;
+    const netM = f.revenue ? Math.round((f.net_profit||0)/f.revenue*1000)/10 : null;
+    const roe = f.equity ? Math.round((f.net_profit||0)/f.equity*1000)/10 : null;
+    const roa = f.total_assets ? Math.round((f.net_profit||0)/f.total_assets*1000)/10 : null;
+    detailRows.push([
+      yr, f.revenue||'', f.ebt||'', f.net_profit||'',
+      f.total_assets||'', f.equity||'', f.total_liabilities||'',
+      ebtM, netM, roe, roa, emp, sal
+    ]);
+  });
+
+  const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
+  wsDetail['!cols'] = [
+    {wch:6},{wch:14},{wch:12},{wch:14},{wch:16},{wch:12},{wch:18},
+    {wch:12},{wch:12},{wch:10},{wch:10},{wch:14},{wch:16}
+  ];
+  XLSX.utils.book_append_sheet(wb, wsDetail, 'Company detail');
+
+  // ── Sheet 2: FS (Financial Statements) ──────────────────────────────────────
+  const fsRows = [[
+    'Year', 'Revenue (€)', 'EBT (€)', 'Net Profit (€)',
+    'Total Assets (€)', 'Equity (€)', 'Total Liabilities (€)',
+    'EBT Margin %', 'Net Margin %', 'ROE %', 'ROA %',
+    'Avg Employees', 'Avg Salary (€/mo)'
+  ]];
+  years.forEach(yr => {
+    const f = (financialsCache[yr] || {})[c.jar_kodas];
+    if (!f) return;
+    const { emp, sal } = avgSodra(yr);
+    const ebtM = f.revenue ? Math.round((f.ebt||0)/f.revenue*1000)/10 : null;
+    const netM = f.revenue ? Math.round((f.net_profit||0)/f.revenue*1000)/10 : null;
+    const roe = f.equity ? Math.round((f.net_profit||0)/f.equity*1000)/10 : null;
+    const roa = f.total_assets ? Math.round((f.net_profit||0)/f.total_assets*1000)/10 : null;
+    fsRows.push([
+      yr, f.revenue||'', f.ebt||'', f.net_profit||'',
+      f.total_assets||'', f.equity||'', f.total_liabilities||'',
+      ebtM, netM, roe, roa, emp, sal
+    ]);
+  });
+  const wsFS = XLSX.utils.aoa_to_sheet(fsRows);
+  wsFS['!cols'] = [
+    {wch:6},{wch:14},{wch:12},{wch:14},{wch:16},{wch:12},{wch:18},
+    {wch:12},{wch:12},{wch:10},{wch:10},{wch:14},{wch:16}
+  ];
+  XLSX.utils.book_append_sheet(wb, wsFS, 'FS');
+
+  // ── Sheet 3: Employees (monthly) ─────────────────────────────────────────────
+  const empRows = [['Year', 'Month', 'Employees (avg)', 'Avg Salary (€)']];
+  sodra.forEach(x => {
+    empRows.push([x.period_year, x.period_month, x.employees_avg, x.avg_salary ? Math.round(x.avg_salary) : '']);
+  });
+  const wsEmp = XLSX.utils.aoa_to_sheet(empRows);
+  wsEmp['!cols'] = [{wch:6},{wch:6},{wch:16},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, wsEmp, 'Employees');
+
+  const fname = (c.company_name || c.jar_kodas).replace(/[^a-zA-Z0-9]/g,'_').substring(0,30);
+  XLSX.writeFile(wb, `${fname}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── Export to Excel ───────────────────────────────────────────────────────────────
+function exportExcel() {
+  const year = parseInt(document.getElementById('f-year').value);
+  const fin = financialsCache[year] || {};
+  const rows = filteredCompanies.map(c => {
+    const f = fin[c.jar_kodas] || {};
+    return {
+      'JAR kodas': c.jar_kodas,
+      'Company name': c.company_name,
+      'Municipality': c.municipality,
+      'EVRK code': c.evrk_code,
+      'Sector': c.evrk_name,
+      'Employees': c.employees,
+      'Avg wage (€/mo)': c.avg_wage ? Math.round(c.avg_wage) : null,
+      'CEO gender': c.ceo_gender,
+      'Has board': c.has_board,
+      [`Revenue ${year} (€)`]: f.revenue ? Math.round(f.revenue) : null,
+      [`Net profit ${year} (€)`]: f.net_profit != null ? Math.round(f.net_profit) : null,
+      [`Net margin ${year} (%)`]: f.revenue ? pct(f.net_profit, f.revenue) : null,
+      [`Total assets ${year} (€)`]: f.total_assets ? Math.round(f.total_assets) : null,
+      [`Equity ${year} (€)`]: f.equity ? Math.round(f.equity) : null,
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Companies');
+  XLSX.writeFile(wb, `CompanyDB_${year}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function showTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  if (name==='charts') renderCharts();
+}
+
+function renderSectorDD(options) {
+  const dd = document.getElementById('sector-dd');
+  if (!dd) return;
+  const allRow = `<div onmousedown="event.preventDefault()" onclick="selectSector('','All sectors')"
+    style="padding:8px 12px;cursor:pointer;font-size:13px;color:#666;border-bottom:1px solid #f0f0f0">All sectors</div>`;
+  dd.innerHTML = allRow + options.map(o =>
+    `<div onmousedown="event.preventDefault()" onclick="selectSector('${o.code.replace(/'/g,"\'")}','${o.name.replace(/'/g,"\'")}')"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5"
+      onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''">${o.name}</div>`
+  ).join('');
+}
+function selectSector(code, name) { selectSectorBoth(code, name); }
+function showSectorDD() {
+  filterSectorDD();
+  document.getElementById('sector-dd').style.display = 'block';
+}
+function hideSectorDD() { setTimeout(() => { document.getElementById('sector-dd').style.display = 'none'; }, 150); }
+function filterSectorDD() {
+  const q = (document.getElementById('f-sector-input').value || '').toLowerCase().trim();
+  if (!q && window.selectedSectorCode) {
+    window.selectedSectorCode = '';
+    const tb = document.getElementById('f-sector-topbar');
+    if (tb) tb.value = '';
+    applyFilters();
+  }
+  const opts = (window.sectorOptions || []).filter(o => !q || o.name.toLowerCase().includes(q) || o.code.includes(q));
+  renderSectorDD(opts);
+  const dd = document.getElementById('sector-dd');
+  if (dd) dd.style.display = opts.length ? 'block' : 'none';
+}
+// ── Topbar sector autocomplete (mirrors sidebar sector) ───────────────────────
+function renderSectorTopbarDD(opts) {
+  const dd = document.getElementById('sector-dd-topbar');
+  const allRow = `<div onmousedown="event.preventDefault()" onclick="selectSectorTopbar('','All sectors')"
+    style="padding:8px 12px;cursor:pointer;font-size:13px;color:#666;border-bottom:1px solid #f0f0f0">All sectors</div>`;
+  dd.innerHTML = allRow + opts.map(o =>
+    `<div onmousedown="event.preventDefault()" onclick="selectSectorTopbar('${o.code.replace(/'/g,"\'")}','${o.name.replace(/'/g,"\'")}')"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+      onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''"
+      title="${o.name}">${o.name}</div>`
+  ).join('');
+}
+function selectSectorTopbar(code, name) {
+  window.selectedSectorCode = code;
+  document.getElementById('f-sector-topbar').value = code ? name : '';
+  document.getElementById('f-sector-input').value = code ? name : ''; // sync sidebar
+  document.getElementById('sector-dd-topbar').style.display = 'none';
+  applyFilters();
+}
+function showSectorTopbar() {
+  filterSectorTopbar();
+  document.getElementById('sector-dd-topbar').style.display = 'block';
+}
+function hideSectorTopbar() { setTimeout(() => { document.getElementById('sector-dd-topbar').style.display = 'none'; }, 150); }
+function filterSectorTopbar() {
+  const q = (document.getElementById('f-sector-topbar').value || '').toLowerCase().trim();
+  // Only clear sector if user explicitly cleared the field
+  if (!q && window.selectedSectorCode) {
+    window.selectedSectorCode = '';
+    const sb = document.getElementById('f-sector-input');
+    if (sb) sb.value = '';
+    applyFilters();
+  }
+  const opts = (window.sectorOptions || []).filter(o => !q || o.name.toLowerCase().includes(q));
+  renderSectorTopbarDD(opts);
+  const dd = document.getElementById('sector-dd-topbar');
+  if (dd) dd.style.display = opts.length ? 'block' : 'none';
+}
+
+// ── Aliases for old references
+function renderSectorDropdown(o){renderSectorDD(o);}
+function showSectorDropdown(){showSectorDD();}
+function hideSectorDropdown(){hideSectorDD();}
+function filterSectorDropdown(){filterSectorDD();}
+
+init();
+</script>
+</body>
+</html>
