@@ -67,6 +67,13 @@ select{padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;b
 .view{display:none}.view.active{display:block}
 .empty{text-align:center;padding:40px;color:#888;font-size:13px}
 .tag{display:inline-block;padding:2px 8px;background:#f0f0f0;border-radius:4px;font-size:11px;margin:2px}
+.sector-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#dbeafe;border:1px solid #93c5fd;border-radius:12px;font-size:11px;font-weight:500;color:#1d4ed8;white-space:nowrap}
+.sector-tag button{background:none;border:none;cursor:pointer;color:#1d4ed8;font-size:12px;padding:0;line-height:1;margin-left:2px}
+.sector-tag button:hover{color:#dc2626}
+.sector-dd-item{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5}
+.sector-dd-item:hover{background:#f5f5f5}
+.sector-dd-item input[type=checkbox]{accent-color:#2563eb;width:14px;height:14px;cursor:pointer}
+.sector-dd-item.checked{background:#eff6ff}
 #loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.96);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
 .loading-title{font-size:20px;font-weight:600;color:#1a1a1a}
 .loading-sub{font-size:13px;color:#666;min-height:20px}
@@ -99,9 +106,13 @@ select{padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;b
     <input type="text" id="search" placeholder="Search company..." oninput="debounceSearch(this.value)" onfocus="showCompanyDD()" onblur="hideCompanyDD()" autocomplete="off" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
     <div id="company-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;max-height:280px;overflow-y:auto;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,0.12);margin-top:2px"></div>
   </div>
-  <div style="position:relative;flex:2;min-width:360px;max-width:520px">
-    <input type="text" id="f-sector-topbar" placeholder="Search sector..." oninput="filterSectorTopbar()" onfocus="showSectorTopbar()" onblur="hideSectorTopbar()" autocomplete="off" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
-    <div id="sector-dd-topbar" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;max-height:280px;overflow-y:auto;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,0.12);margin-top:2px"></div>
+  <div style="position:relative;flex:2;min-width:360px;max-width:520px" id="sector-wrap">
+    <div id="sector-tags-input" onclick="focusSectorInput()" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:36px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:text;font-size:13px">
+      <div id="sector-tags"></div>
+      <input type="text" id="f-sector-topbar" placeholder="Search sector..." oninput="filterSectorTopbar()" onfocus="showSectorTopbar()" onblur="hideSectorTopbar()" autocomplete="off" style="border:none;outline:none;font-size:13px;min-width:120px;flex:1;padding:2px 4px;background:transparent">
+    </div>
+    <button id="sector-clear-btn" onclick="clearAllSectors()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#ef4444;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;white-space:nowrap">✕ Clear</button>
+    <div id="sector-dd-topbar" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;max-height:300px;overflow-y:auto;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,0.12);margin-top:2px"></div>
   </div>
   <select id="f-muni" onchange="applyFilters()"><option value="">All municipalities</option></select>
   <select id="f-year" onchange="applyFilters()">
@@ -390,6 +401,7 @@ async function init() {
     await loadYearFin(restYears[i]);
     setStatus(all.length.toLocaleString() + ' companies | loaded ' + restYears[i] + ' financials...');
     if (selectedJar && window._lastSodra) rebuildFinTable(selectedJar, window._lastSodra);
+    updateRevenueTrend();
   }
 
   // Save cache
@@ -473,14 +485,60 @@ function clearCompanySearch() {
 }
 
 function pickCompany(jar, name) {
-  document.getElementById('search').value = name;
+  window.selectedCompanies.add(jar);
+  document.getElementById('search').value = '';
+  renderCompanyTags();
   document.getElementById('company-dd').style.display = 'none';
   applyFilters();
-  setTimeout(() => selectCompany(jar), 200);
+  if (window.selectedCompanies.size === 1) setTimeout(() => selectCompany(jar), 200);
 }
 
 function showCompanyDD() { renderCompanyDD(); document.getElementById('company-dd').style.display = 'block'; }
 function hideCompanyDD() { setTimeout(() => { document.getElementById('company-dd').style.display = 'none'; }, 150); }
+
+// ── Company multi-select ──────────────────────────────────────────────────────
+window.selectedCompanies = new Set(); // Set of selected JAR codes
+
+function focusCompanyInput() { document.getElementById('search').focus(); }
+
+function renderCompanyTags() {
+  const tags = document.getElementById('company-tags');
+  const clearBtn = document.getElementById('company-clear-btn');
+  const input = document.getElementById('search');
+  if (!tags) return;
+  tags.innerHTML = Array.from(window.selectedCompanies).map(jar => {
+    const c = allCompanies.find(x => x.jar_kodas === jar);
+    const name = c ? c.company_name : jar;
+    const short = name.length > 20 ? name.substring(0,20) + '…' : name;
+    return `<span class="sector-tag" title="${name}" style="background:#dcfce7;border-color:#86efac;color:#166534">${short}<button onmousedown="event.preventDefault()" onclick="removeCompany('${jar}')">×</button></span>`;
+  }).join('');
+  if (clearBtn) clearBtn.style.display = window.selectedCompanies.size > 0 ? 'block' : 'none';
+  if (input) {
+    input.placeholder = window.selectedCompanies.size > 0 ? 'Add company...' : 'Search company...';
+    input.style.paddingRight = window.selectedCompanies.size > 0 ? '60px' : '4px';
+  }
+}
+
+function removeCompany(jar) {
+  window.selectedCompanies.delete(jar);
+  if (selectedJar === jar) selectedJar = null;
+  renderCompanyTags();
+  applyFilters();
+}
+
+function clearAllCompanies() {
+  window.selectedCompanies.clear();
+  selectedJar = null;
+  renderCompanyTags();
+  document.getElementById('search').value = '';
+  document.getElementById('company-dd').style.display = 'none';
+  // Also clear sectors
+  window.selectedSectors.clear();
+  renderSectorTags();
+  const tb = document.getElementById('f-sector-topbar');
+  if (tb) { tb.value = ''; tb.style.background = ''; tb.style.borderColor = ''; }
+  applyFilters();
+}
 
 function debounceSearch(val) {
   clearTimeout(companySearchTimeout);
@@ -493,7 +551,7 @@ async function applyFilters() {
   const year = parseInt(document.getElementById('f-year').value);
   const fin = financialsCache[year] || {};
   const q = document.getElementById('search').value.toLowerCase();
-  const sector = window.selectedSectorCode || '';
+  const selectedSectorsSet = window.selectedSectors || new Set();
   const muni = document.getElementById('f-muni').value;
   const minEmp = parseInt(document.getElementById('f-emp').value) || 0;
   const minRev = parseFloat(document.getElementById('f-rev-min').value) || 0;
@@ -508,8 +566,11 @@ async function applyFilters() {
   const watchlistOnly = document.getElementById('f-watchlist').checked;
 
   filteredCompanies = allCompanies.filter(c => {
-    if (q && !c.company_name?.toLowerCase().includes(q) && !c.jar_kodas?.includes(q)) return false;
-    if (sector && c.evrk_code !== sector) return false;
+    // Multi-company filter
+    if (window.selectedCompanies && window.selectedCompanies.size > 0) {
+      if (!window.selectedCompanies.has(c.jar_kodas)) return false;
+    } else if (q && !c.company_name?.toLowerCase().includes(q) && !c.jar_kodas?.includes(q)) return false;
+    if (selectedSectorsSet.size > 0 && !selectedSectorsSet.has(c.evrk_code)) return false;
     if (muni && c.municipality !== muni) return false;
     if (minEmp && (c.employees || 0) < minEmp) return false;
     if (ceo && c.ceo_gender !== ceo) return false;
@@ -533,11 +594,14 @@ async function applyFilters() {
   renderList();
   updateOverview();
   updateSectorTable();
+  updateRevenueTrend();
   if (document.getElementById('view-charts').classList.contains('active')) renderCharts();
 }
 
 function clearFilters() {
   ['f-emp','f-sal-min','f-sal-max','f-rev-min','f-rev-max','f-ebt-min','f-ebt-max','f-margin-min','f-margin-max','search'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  if(window.selectedCompanies) window.selectedCompanies.clear();
+  renderCompanyTags();
   ['f-sector','f-muni','f-ceo','f-year'].forEach(id => { const el=document.getElementById(id); if(el) el.value = id==='f-year'?'2024':''; });
   const tb=document.getElementById('f-sector-topbar'); if(tb) tb.value='';
   window.selectedSectorCode='';
@@ -700,17 +764,11 @@ function rebuildFinTable(jar, sodra) {
 
 async function selectCompany(jar) {
   selectedJar = jar;
-  // Auto-fill sector field with this company's sector (visual only, don't filter)
+  // Auto-fill sector topbar with company's sector (informational only)
   const comp = allCompanies.find(x => x.jar_kodas === jar);
-  if (comp && comp.evrk_name) {
+  if (comp && comp.evrk_name && !window.selectedSectorCode) {
     const tb = document.getElementById('f-sector-topbar');
-    if (tb && !window.selectedSectorCode) {
-      tb.value = comp.evrk_name;
-      tb.style.background = '#f0f9ff';
-      tb.style.borderColor = '#93c5fd';
-      tb.style.fontWeight = '400';
-      tb._companyAutoFill = true; // mark as auto-filled
-    }
+    if (tb) { tb.value = comp.evrk_name; tb._autoFill = true; tb.style.background='#f0f9ff'; tb.style.borderColor='#93c5fd'; tb.style.fontWeight='400'; }
   }
   renderList();
 
@@ -823,15 +881,184 @@ async function selectCompany(jar) {
 
   rebuildFinTable(jar, sodra);
 
-  setTimeout(function() { updateSectorTable(); }, 100);
+  setTimeout(function() { updateSectorTable(); updateRevenueTrend(); }, 100);
 }
 
+
+// ── Revenue trend chart in Overview ──────────────────────────────────────────
+function updateRevenueTrend() {
+  const wrap = document.getElementById('revenue-trend-wrap');
+  if (!wrap) return;
+
+  const years = Object.keys(financialsCache).map(Number).sort((a,b)=>a-b);
+  if (!years.length) { wrap.style.display = 'none'; return; }
+
+  const hasCompanies = window.selectedCompanies && window.selectedCompanies.size > 0;
+  const hasSectors = window.selectedSectors && window.selectedSectors.size > 0;
+
+  if (!hasCompanies && !hasSectors) { wrap.style.display = 'none'; return; }
+
+  wrap.style.display = 'block';
+
+  const COLORS = ['#2563eb','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2','#be185d','#059669','#ea580c','#6366f1'];
+  let datasets = [];
+  let title = '';
+
+  if (hasCompanies) {
+    // One line per selected company
+    title = `Revenue trend — ${window.selectedCompanies.size} selected companies`;
+    Array.from(window.selectedCompanies).forEach((jar, i) => {
+      const c = allCompanies.find(x => x.jar_kodas === jar);
+      const data = years.map(yr => {
+        const f = (financialsCache[yr]||{})[jar];
+        return f && f.revenue ? Math.round(f.revenue / 1000) : null;
+      });
+      datasets.push({
+        label: c ? c.company_name : jar,
+        data,
+        borderColor: COLORS[i % COLORS.length],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 3,
+        spanGaps: true
+      });
+    });
+  } else if (hasSectors) {
+    // One line per selected sector — total revenue across all companies in sector per year
+    title = `Revenue trend — ${window.selectedSectors.size} selected sector${window.selectedSectors.size > 1 ? 's' : ''}`;
+    Array.from(window.selectedSectors).forEach((code, i) => {
+      const sectorCos = allCompanies.filter(x => x.evrk_code === code);
+      const sectorName = window.sectorOptions?.find(s => s.code === code)?.name || code;
+      const short = sectorName.length > 30 ? sectorName.substring(0, 30) + '…' : sectorName;
+      const data = years.map(yr => {
+        const total = sectorCos.reduce((sum, c) => {
+          const f = (financialsCache[yr]||{})[c.jar_kodas];
+          return sum + (f && f.revenue ? f.revenue : 0);
+        }, 0);
+        return total > 0 ? Math.round(total / 1000) : null;
+      });
+      datasets.push({
+        label: short,
+        data,
+        borderColor: COLORS[i % COLORS.length],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 3,
+        spanGaps: true
+      });
+    });
+  }
+
+  document.getElementById('revenue-trend-title').textContent = title;
+
+  if (charts['rev-trend']) charts['rev-trend'].destroy();
+  charts['rev-trend'] = new Chart(document.getElementById('revenue-trend-chart'), {
+    type: 'line',
+    data: { labels: years, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { font: { size: 11 }, boxWidth: 12, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.raw != null ? '€' + ctx.raw.toLocaleString() + 'K' : '—'}`
+          }
+        }
+      },
+      scales: {
+        y: { ticks: { callback: v => '€' + v.toLocaleString() + 'K', font: { size: 10 } }, grid: { color: '#f0f0f0' } },
+        x: { ticks: { font: { size: 10 } }, grid: { color: '#f0f0f0' } }
+      }
+    }
+  });
+}
 
 // ── Sector / competitor table ─────────────────────────────────────────────────
 let sectorTableData = [];
 let sectorSortCol = 'rev24';
 let sectorSortDir = -1; // -1 = desc, 1 = asc
 let sectorTableJar = null; // highlighted company jar
+
+function updateRevenueTrend() {
+  const wrap = document.getElementById('revenue-trend-wrap');
+  if (!wrap) return;
+
+  const hasCompanies = window.selectedCompanies && window.selectedCompanies.size > 0;
+  const hasSectors = window.selectedSectors && window.selectedSectors.size > 0;
+
+  if (!hasCompanies && !hasSectors) {
+    wrap.style.display = 'none';
+    if (charts['revenue-trend']) { charts['revenue-trend'].destroy(); delete charts['revenue-trend']; }
+    return;
+  }
+
+  wrap.style.display = 'block';
+  const years = Object.keys(financialsCache).map(Number).sort((a,b)=>a-b);
+  const colors = ['#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#0891b2','#ea580c','#65a30d','#db2777','#0284c7'];
+  let datasets = [];
+  let title = '';
+
+  if (hasCompanies) {
+    // One line per selected company
+    title = `Revenue trend — ${window.selectedCompanies.size} selected compan${window.selectedCompanies.size>1?'ies':'y'}`;
+    Array.from(window.selectedCompanies).forEach((jar, i) => {
+      const c = allCompanies.find(x => x.jar_kodas === jar);
+      if (!c) return;
+      const data = years.map(yr => {
+        const f = (financialsCache[yr]||{})[jar];
+        return f && f.revenue ? Math.round(f.revenue/1000) : null;
+      });
+      datasets.push({
+        label: (c.company_name||jar).substring(0,25),
+        data,
+        borderColor: colors[i % colors.length],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 3,
+        spanGaps: true
+      });
+    });
+  } else if (hasSectors) {
+    // One line per selected sector — total revenue per year
+    title = `Revenue trend — ${window.selectedSectors.size} selected sector${window.selectedSectors.size>1?'s':''}`;
+    Array.from(window.selectedSectors).forEach((code, i) => {
+      const sectorName = window.sectorOptions?.find(s=>s.code===code)?.name || code;
+      const companies = allCompanies.filter(x => x.evrk_code === code);
+      const data = years.map(yr => {
+        const total = companies.reduce((sum, c) => {
+          const f = (financialsCache[yr]||{})[c.jar_kodas];
+          return sum + (f && f.revenue ? f.revenue : 0);
+        }, 0);
+        return total > 0 ? Math.round(total/1000) : null;
+      });
+      datasets.push({
+        label: sectorName.substring(0,30),
+        data,
+        borderColor: colors[i % colors.length],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 3,
+        spanGaps: true
+      });
+    });
+  }
+
+  document.getElementById('revenue-trend-title').textContent = title;
+
+  if (charts['revenue-trend']) charts['revenue-trend'].destroy();
+  charts['revenue-trend'] = new Chart(document.getElementById('revenue-trend-chart'), {
+    type: 'line',
+    data: { labels: years, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { font: { size: 10 }, boxWidth: 12 } } },
+      scales: {
+        y: { ticks: { callback: v => v >= 1000 ? (v/1000)+'M' : v+'K', font: { size: 10 } } },
+        x: { ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+}
 
 function updateSectorTable() {
   const wrap = document.getElementById('sector-table-wrap');
@@ -849,10 +1076,10 @@ function updateSectorTable() {
       title = `Companies in sector: ${c.evrk_name || c.evrk_code} (${companies.length})`;
       highlightJar = selectedJar;
     }
-  } else if (window.selectedSectorCode) {
-    companies = allCompanies.filter(x => x.evrk_code === window.selectedSectorCode);
-    const sectorName = window.sectorOptions?.find(s => s.code === window.selectedSectorCode)?.name || window.selectedSectorCode;
-    title = `Companies in sector: ${sectorName} (${companies.length})`;
+  } else if (window.selectedSectors && window.selectedSectors.size > 0) {
+    companies = allCompanies.filter(x => window.selectedSectors.has(x.evrk_code));
+    const names = Array.from(window.selectedSectors).map(c => window.sectorOptions?.find(s=>s.code===c)?.name||c);
+    title = `${names.length} sector${names.length>1?'s':''}: ${names.slice(0,2).join(', ')}${names.length>2?' +'+( names.length-2)+' more':''} (${companies.length} companies)`;
   }
 
   if (!companies.length) {
@@ -969,9 +1196,182 @@ function smartExport() {
   const detailActive = document.getElementById('view-detail')?.classList.contains('active');
   if (detailActive && selectedJar) {
     exportCompanyDetail();
+  } else if (window.selectedCompanies && window.selectedCompanies.size > 1) {
+    exportMultiCompany();
+  } else if (window.selectedSectors && window.selectedSectors.size > 0) {
+    exportSectorData();
   } else {
     exportExcel();
   }
+}
+
+async function exportMultiCompany() {
+  const btn = event?.target;
+  if (btn) { btn.textContent = 'Loading...'; btn.disabled = true; }
+  if (!window.allYearsLoaded) {
+    await new Promise(resolve => {
+      const check = setInterval(() => { if (window.allYearsLoaded) { clearInterval(check); resolve(); } }, 500);
+      setTimeout(() => { clearInterval(check); resolve(); }, 60000);
+    });
+  }
+  const companies = allCompanies.filter(x => window.selectedCompanies.has(x.jar_kodas));
+  const years = Object.keys(financialsCache).map(Number).sort((a,b)=>a-b);
+  const wb = XLSX.utils.book_new();
+
+  // Companies sheet
+  const compRows = [['JAR code','Company name','Municipality','Sector','CEO gender','Employees','Avg wage (€)']];
+  companies.forEach(c => compRows.push([c.jar_kodas, c.company_name, c.municipality, c.evrk_name, c.ceo_gender, c.employees, c.avg_wage]));
+  const wsC = XLSX.utils.aoa_to_sheet(compRows);
+  wsC['!cols'] = [{wch:12},{wch:30},{wch:18},{wch:35},{wch:12},{wch:10},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, wsC, 'Companies');
+
+  // FS sheet
+  const fsRows = [['JAR code','Company name','Sector','Year','Revenue (€)','EBT (€)','Net Profit (€)','Total Assets (€)','Equity (€)','EBT Margin %','Net Margin %','ROE %','ROA %','Avg Employees','Avg Salary (€/mo)']];
+  companies.forEach(c => {
+    years.forEach(yr => {
+      const f = (financialsCache[yr]||{})[c.jar_kodas];
+      if (!f) return;
+      const ebtM = f.revenue ? Math.round((f.ebt||0)/f.revenue*1000)/10 : null;
+      const netM = f.revenue ? Math.round((f.net_profit||0)/f.revenue*1000)/10 : null;
+      const roe = f.equity ? Math.round((f.net_profit||0)/f.equity*1000)/10 : null;
+      const roa = f.total_assets ? Math.round((f.net_profit||0)/f.total_assets*1000)/10 : null;
+      fsRows.push([c.jar_kodas, c.company_name, c.evrk_name, yr, f.revenue||'', f.ebt||'', f.net_profit||'', f.total_assets||'', f.equity||'', ebtM, netM, roe, roa, '', '']);
+    });
+  });
+
+  // Load SODRA
+  if (btn) btn.textContent = 'Loading SODRA...';
+  const sodraAll = {};
+  for (let i = 0; i < companies.length; i += 20) {
+    const batch = companies.slice(i, i+20);
+    const jars = batch.map(c=>`jar_kodas=eq.${c.jar_kodas}`).join(',');
+    const rows = await sbGet(`sodra_workforce?select=jar_kodas,period_year,period_month,employees_avg,avg_salary&or=(${jars})&order=jar_kodas,period_year,period_month&limit=10000`);
+    rows.forEach(x => { if (!sodraAll[x.jar_kodas]) sodraAll[x.jar_kodas]=[]; sodraAll[x.jar_kodas].push(x); });
+  }
+
+  // Add SODRA to FS
+  const sbyy = {};
+  Object.entries(sodraAll).forEach(([jar,rows]) => rows.forEach(x => {
+    const k=jar+'_'+x.period_year;
+    if(!sbyy[k]) sbyy[k]={sal:[],emp:[]};
+    if(x.avg_salary) sbyy[k].sal.push(x.avg_salary);
+    if(x.employees_avg) sbyy[k].emp.push(x.employees_avg);
+  }));
+  for(let i=1;i<fsRows.length;i++){
+    const d=sbyy[fsRows[i][0]+'_'+fsRows[i][3]];
+    if(d){fsRows[i][13]=d.emp.length?Math.round(d.emp.reduce((a,b)=>a+b,0)/d.emp.length):'';fsRows[i][14]=d.sal.length?Math.round(d.sal.reduce((a,b)=>a+b,0)/d.sal.length):'';}
+  }
+  const wsFS = XLSX.utils.aoa_to_sheet(fsRows);
+  wsFS['!cols']=[{wch:12},{wch:28},{wch:25},{wch:6},{wch:14},{wch:12},{wch:14},{wch:16},{wch:12},{wch:12},{wch:12},{wch:10},{wch:10},{wch:14},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, wsFS, 'FS');
+
+  // Employees sheet
+  const empRows = [['JAR code','Company name','Year','Month','Employees (avg)','Avg Salary (€)']];
+  companies.forEach(c => (sodraAll[c.jar_kodas]||[]).forEach(x => empRows.push([c.jar_kodas, c.company_name, x.period_year, x.period_month, x.employees_avg, x.avg_salary?Math.round(x.avg_salary):''])));
+  const wsEmp = XLSX.utils.aoa_to_sheet(empRows);
+  wsEmp['!cols']=[{wch:12},{wch:28},{wch:6},{wch:6},{wch:16},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, wsEmp, 'Employees');
+
+  XLSX.writeFile(wb, `Companies_${new Date().toISOString().slice(0,10)}.xlsx`);
+  if (btn) { btn.textContent = 'Export to Excel'; btn.disabled = false; }
+}
+
+async function exportSectorData() {
+  const btn = event?.target;
+  if (btn) { btn.textContent = 'Loading...'; btn.disabled = true; }
+
+  // Wait for all years
+  if (!window.allYearsLoaded) {
+    await new Promise(resolve => {
+      const check = setInterval(() => { if (window.allYearsLoaded) { clearInterval(check); resolve(); } }, 500);
+      setTimeout(() => { clearInterval(check); resolve(); }, 60000);
+    });
+  }
+
+  const sectors = Array.from(window.selectedSectors);
+  const sectorNames = sectors.map(c => window.sectorOptions?.find(s=>s.code===c)?.name||c);
+  const companies = allCompanies.filter(x => window.selectedSectors.has(x.evrk_code));
+  const years = Object.keys(financialsCache).map(Number).sort((a,b)=>a-b);
+
+  if (btn) { btn.textContent = 'Building Excel...'; }
+
+  const wb = XLSX.utils.book_new();
+
+  // ── Sheet 1: Companies list ─────────────────────────────────────────────────
+  const compRows = [['JAR code','Company name','Municipality','Sector','CEO gender','Has board','Employees','Avg wage (€)']];
+  companies.forEach(c => compRows.push([c.jar_kodas, c.company_name, c.municipality, c.evrk_name, c.ceo_gender, c.has_board?'Yes':'No', c.employees, c.avg_wage]));
+  const wsComp = XLSX.utils.aoa_to_sheet(compRows);
+  wsComp['!cols'] = [{wch:12},{wch:30},{wch:18},{wch:35},{wch:12},{wch:10},{wch:10},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, wsComp, 'Companies');
+
+  // ── Sheet 2: FS — all companies all years ────────────────────────────────────
+  const fsRows = [['JAR code','Company name','Sector','Year','Revenue (€)','EBT (€)','Net Profit (€)','Total Assets (€)','Equity (€)','Total Liabilities (€)','EBT Margin %','Net Margin %','ROE %','ROA %','Avg Employees','Avg Salary (€/mo)']];
+  companies.forEach(c => {
+    years.forEach(yr => {
+      const f = (financialsCache[yr]||{})[c.jar_kodas];
+      if (!f) return;
+      const ebtM = f.revenue ? Math.round((f.ebt||0)/f.revenue*1000)/10 : null;
+      const netM = f.revenue ? Math.round((f.net_profit||0)/f.revenue*1000)/10 : null;
+      const roe = f.equity ? Math.round((f.net_profit||0)/f.equity*1000)/10 : null;
+      const roa = f.total_assets ? Math.round((f.net_profit||0)/f.total_assets*1000)/10 : null;
+      fsRows.push([c.jar_kodas, c.company_name, c.evrk_name, yr, f.revenue||'', f.ebt||'', f.net_profit||'', f.total_assets||'', f.equity||'', f.total_liabilities||'', ebtM, netM, roe, roa, '', '']);
+    });
+  });
+
+  // Load SODRA data for all companies in sector and add annual avg
+  if (btn) { btn.textContent = 'Loading SODRA...'; }
+  const sodraAll = {};
+  const batchSize = 20;
+  for (let i = 0; i < companies.length; i += batchSize) {
+    const batch = companies.slice(i, i+batchSize);
+    const jars = batch.map(c=>`jar_kodas=eq.${c.jar_kodas}`).join(',');
+    const rows = await sbGet(`sodra_workforce?select=jar_kodas,period_year,period_month,employees_avg,avg_salary&or=(${jars})&order=jar_kodas,period_year,period_month&limit=10000`);
+    rows.forEach(x => {
+      if (!sodraAll[x.jar_kodas]) sodraAll[x.jar_kodas] = [];
+      sodraAll[x.jar_kodas].push(x);
+    });
+    if (btn) btn.textContent = `Loading SODRA ${Math.min(i+batchSize,companies.length)}/${companies.length}...`;
+  }
+
+  // Add avg employee/salary to FS rows
+  const sodraByJarYear = {};
+  Object.entries(sodraAll).forEach(([jar, rows]) => {
+    rows.forEach(x => {
+      const key = jar+'_'+x.period_year;
+      if (!sodraByJarYear[key]) sodraByJarYear[key] = {sal:[],emp:[]};
+      if (x.avg_salary) sodraByJarYear[key].sal.push(x.avg_salary);
+      if (x.employees_avg) sodraByJarYear[key].emp.push(x.employees_avg);
+    });
+  });
+  // Update FS rows with SODRA data (skip header row)
+  for (let i = 1; i < fsRows.length; i++) {
+    const jar = fsRows[i][0], yr = fsRows[i][3];
+    const key = jar+'_'+yr;
+    const d = sodraByJarYear[key];
+    if (d) {
+      fsRows[i][14] = d.emp.length ? Math.round(d.emp.reduce((a,b)=>a+b,0)/d.emp.length) : '';
+      fsRows[i][15] = d.sal.length ? Math.round(d.sal.reduce((a,b)=>a+b,0)/d.sal.length) : '';
+    }
+  }
+
+  const wsFS = XLSX.utils.aoa_to_sheet(fsRows);
+  wsFS['!cols'] = [{wch:12},{wch:28},{wch:25},{wch:6},{wch:14},{wch:12},{wch:14},{wch:16},{wch:12},{wch:18},{wch:12},{wch:12},{wch:10},{wch:10},{wch:14},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, wsFS, 'FS');
+
+  // ── Sheet 3: Employees — monthly SODRA ──────────────────────────────────────
+  const empRows = [['JAR code','Company name','Sector','Year','Month','Employees (avg)','Avg Salary (€)']];
+  companies.forEach(c => {
+    (sodraAll[c.jar_kodas]||[]).forEach(x => {
+      empRows.push([c.jar_kodas, c.company_name, c.evrk_name, x.period_year, x.period_month, x.employees_avg, x.avg_salary?Math.round(x.avg_salary):'']);
+    });
+  });
+  const wsEmp = XLSX.utils.aoa_to_sheet(empRows);
+  wsEmp['!cols'] = [{wch:12},{wch:28},{wch:25},{wch:6},{wch:6},{wch:16},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, wsEmp, 'Employees');
+
+  const fname = `Sector_${sectorNames[0].substring(0,20).replace(/[^a-zA-Z0-9]/g,'_')}_${new Date().toISOString().slice(0,10)}`;
+  XLSX.writeFile(wb, `${fname}.xlsx`);
+  if (btn) { btn.textContent = 'Export to Excel'; btn.disabled = false; }
 }
 
 // ── Export company detail to Excel ───────────────────────────────────────────
@@ -1127,6 +1527,22 @@ function renderSectorDD(options) {
       onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''">${o.name}</div>`
   ).join('');
 }
+function selectSectorBoth(code, name) {
+  window.selectedSectorCode = code;
+  // Clear company when sector explicitly selected
+  if (code && selectedJar) {
+    selectedJar = null;
+    window.selectedCompanyJar = '';
+    const s = document.getElementById('search'); if (s) s.value = '';
+    renderList();
+  }
+  const tb = document.getElementById('f-sector-topbar');
+  if (tb) { tb.value = code ? name : ''; tb._autoFill = false; tb.style.background = code ? '#eff6ff' : ''; tb.style.borderColor = code ? '#2563eb' : ''; tb.style.fontWeight = code ? '500' : ''; }
+  const sb = document.getElementById('f-sector-input'); if (sb) sb.value = code ? name : '';
+  const dd1 = document.getElementById('sector-dd-topbar'); if (dd1) dd1.style.display = 'none';
+  const dd2 = document.getElementById('sector-dd'); if (dd2) dd2.style.display = 'none';
+  applyFilters();
+}
 function selectSector(code, name) { selectSectorBoth(code, name); }
 function showSectorDD() {
   filterSectorDD();
@@ -1146,42 +1562,97 @@ function filterSectorDD() {
   const dd = document.getElementById('sector-dd');
   if (dd) dd.style.display = opts.length ? 'block' : 'none';
 }
-// ── Topbar sector autocomplete (mirrors sidebar sector) ───────────────────────
-function renderSectorTopbarDD(opts) {
-  const dd = document.getElementById('sector-dd-topbar');
-  const allRow = `<div onmousedown="event.preventDefault()" onclick="selectSectorTopbar('','All sectors')"
-    style="padding:8px 12px;cursor:pointer;font-size:13px;color:#666;border-bottom:1px solid #f0f0f0">All sectors</div>`;
-  dd.innerHTML = allRow + opts.map(o =>
-    `<div onmousedown="event.preventDefault()" onclick="selectSectorTopbar('${o.code.replace(/'/g,"\'")}','${o.name.replace(/'/g,"\'")}')"
-      style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
-      onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''"
-      title="${o.name}">${o.name}</div>`
-  ).join('');
+// ── Multi-sector selection ────────────────────────────────────────────────────
+window.selectedSectors = new Set();
+window.selectedCompanies = new Set(); // Set of selected sector codes
+
+function focusSectorInput() { document.getElementById('f-sector-topbar').focus(); }
+
+function renderSectorTags() {
+  const tags = document.getElementById('sector-tags');
+  const clearBtn = document.getElementById('sector-clear-btn');
+  const input = document.getElementById('f-sector-topbar');
+  if (!tags) return;
+  const sectors = window.sectorOptions || [];
+  tags.innerHTML = Array.from(window.selectedSectors).map(code => {
+    const name = sectors.find(s => s.code === code)?.name || code;
+    const short = name.length > 25 ? name.substring(0, 25) + '…' : name;
+    return `<span class="sector-tag" title="${name}">${short}<button onmousedown="event.preventDefault()" onclick="removeSector('${code.replace(/'/g,"\'")}')">×</button></span>`;
+  }).join('');
+  if (clearBtn) clearBtn.style.display = window.selectedSectors.size > 0 ? 'block' : 'none';
+  if (input) input.placeholder = window.selectedSectors.size > 0 ? 'Add sector...' : 'Search sector...';
+  // Adjust padding-right so text doesn't overlap clear button
+  const tagsInput = document.getElementById('sector-tags-input');
+  if (tagsInput) tagsInput.style.paddingRight = window.selectedSectors.size > 0 ? '60px' : '8px';
 }
-function selectSectorTopbar(code, name) {
-  window.selectedSectorCode = code;
-  document.getElementById('f-sector-topbar').value = code ? name : '';
-  document.getElementById('f-sector-input').value = code ? name : ''; // sync sidebar
-  document.getElementById('sector-dd-topbar').style.display = 'none';
+
+function removeSector(code) {
+  window.selectedSectors.delete(code);
+  renderSectorTags();
+  renderSectorTopbarDD(filterSectorOptions());
   applyFilters();
 }
+
+function clearAllSectors() {
+  window.selectedSectors.clear();
+  renderSectorTags();
+  const tb = document.getElementById('f-sector-topbar');
+  if (tb) { tb.value = ''; tb.style.background = ''; tb.style.borderColor = ''; }
+  document.getElementById('sector-dd-topbar').style.display = 'none';
+  // Also clear companies
+  window.selectedCompanies.clear();
+  selectedJar = null;
+  renderCompanyTags();
+  document.getElementById('search').value = '';
+  applyFilters();
+}
+
+function filterSectorOptions() {
+  const q = (document.getElementById('f-sector-topbar')?.value || '').toLowerCase().trim();
+  return (window.sectorOptions || []).filter(o => !q || o.name.toLowerCase().includes(q));
+}
+
+function renderSectorTopbarDD(opts) {
+  const dd = document.getElementById('sector-dd-topbar');
+  if (!dd) return;
+  const allRow = `<div class="sector-dd-item" onmousedown="event.preventDefault()" onclick="clearAllSectors()">
+    <input type="checkbox" ${window.selectedSectors.size === 0 ? 'checked' : ''}> <span style="color:#666">All sectors</span>
+  </div>`;
+  dd.innerHTML = allRow + opts.map(o => {
+    const checked = window.selectedSectors.has(o.code);
+    return `<div class="sector-dd-item ${checked ? 'checked' : ''}" onmousedown="event.preventDefault()" onclick="toggleSector('${o.code.replace(/'/g,"\'")}','${o.name.replace(/'/g,"\'")}')">
+      <input type="checkbox" ${checked ? 'checked' : ''} onmousedown="event.preventDefault()">
+      <span title="${o.name}">${o.name}</span>
+    </div>`;
+  }).join('');
+}
+
+function toggleSector(code, name) {
+  if (window.selectedSectors.has(code)) {
+    window.selectedSectors.delete(code);
+  } else {
+    window.selectedSectors.add(code);
+  }
+  renderSectorTags();
+  renderSectorTopbarDD(filterSectorOptions());
+  // Keep dropdown open for multi-select
+  document.getElementById('sector-dd-topbar').style.display = 'block';
+  applyFilters();
+}
+
 function showSectorTopbar() {
-  filterSectorTopbar();
+  renderSectorTopbarDD(filterSectorOptions());
   document.getElementById('sector-dd-topbar').style.display = 'block';
 }
-function hideSectorTopbar() { setTimeout(() => { document.getElementById('sector-dd-topbar').style.display = 'none'; }, 150); }
+function hideSectorTopbar() { setTimeout(() => { document.getElementById('sector-dd-topbar').style.display = 'none'; }, 200); }
+
 function filterSectorTopbar() {
   const tb = document.getElementById('f-sector-topbar');
-  const q = (tb?.value || '').toLowerCase().trim();
-
-  // If this was auto-filled by company selection, clear it and start fresh
   if (tb?._companyAutoFill) {
     tb._companyAutoFill = false;
-    tb.value = '';
     tb.style.background = '';
     tb.style.borderColor = '';
   }
-
   // Deselect company when user types in sector
   if (selectedJar) {
     selectedJar = null;
@@ -1189,18 +1660,13 @@ function filterSectorTopbar() {
     document.getElementById('search').value = '';
     renderList();
   }
-
-  if (!q && window.selectedSectorCode) {
-    window.selectedSectorCode = '';
-    const sb = document.getElementById('f-sector-input');
-    if (sb) sb.value = '';
-    applyFilters();
-  }
-  const opts = (window.sectorOptions || []).filter(o => !q || o.name.toLowerCase().includes(q));
-  renderSectorTopbarDD(opts);
-  const dd = document.getElementById('sector-dd-topbar');
-  if (dd) dd.style.display = opts.length ? 'block' : 'none';
+  renderSectorTopbarDD(filterSectorOptions());
+  document.getElementById('sector-dd-topbar').style.display = 'block';
 }
+
+// Keep old single-sector functions as aliases for compatibility
+function selectSectorBoth(code, name) { if (code) toggleSector(code, name); else clearAllSectors(); }
+function selectSector(code, name) { selectSectorBoth(code, name); }
 
 // ── Aliases for old references
 function renderSectorDropdown(o){renderSectorDD(o);}
