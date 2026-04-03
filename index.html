@@ -594,6 +594,7 @@ async function applyFilters() {
   renderList();
   updateOverview();
   updateSectorTable();
+  updateTrendChart();
   updateRevenueTrend();
   if (document.getElementById('view-charts').classList.contains('active')) renderCharts();
 }
@@ -1060,6 +1061,124 @@ function updateRevenueTrend() {
   });
 }
 
+function updateTrendChart() {
+  const wrap = document.getElementById('trend-chart-wrap');
+  if (!wrap) return;
+
+  const years = Object.keys(financialsCache).map(Number).sort((a,b)=>a-b);
+  if (!years.length) { wrap.style.display='none'; return; }
+
+  const hasCompanies = window.selectedCompanies && window.selectedCompanies.size > 0;
+  const hasSectors = window.selectedSectors && window.selectedSectors.size > 0;
+  if (!hasCompanies && !hasSectors) {
+    wrap.style.display='none';
+    ['rev','ebt','rpe','sal'].forEach(k => { if(charts['trend_'+k]) { charts['trend_'+k].destroy(); delete charts['trend_'+k]; } });
+    return;
+  }
+
+  wrap.style.display='block';
+  const COLORS = ['#2563eb','#16a34a','#dc2626','#d97706','#7c3aed','#0891b2','#be185d','#65a30d','#c2410c','#1d4ed8'];
+
+  // Build series list — either companies or sectors
+  let series = [];
+  if (hasCompanies) {
+    series = allCompanies.filter(c => window.selectedCompanies.has(c.jar_kodas)).map((c,i) => ({
+      label: c.company_name, jar: c.jar_kodas, color: COLORS[i%COLORS.length], isSector: false
+    }));
+  } else {
+    series = Array.from(window.selectedSectors).map((code,i) => ({
+      label: (window.sectorOptions?.find(s=>s.code===code)?.name||code).substring(0,35),
+      code, color: COLORS[i%COLORS.length], isSector: true,
+      companies: allCompanies.filter(c=>c.evrk_code===code)
+    }));
+  }
+
+  // Get SODRA annual data from window._sectorSodraCache or _lastSodra
+  const sodraCache = window._sectorSodraCache || {};
+
+  function getMetrics(s, yr) {
+    if (s.isSector) {
+      // Aggregate across all companies in sector
+      let rev=0, ebt=0, salSum=0, salN=0, empSum=0, empN=0;
+      s.companies.forEach(c => {
+        const f = (financialsCache[yr]||{})[c.jar_kodas];
+        if (f) { rev += f.revenue||0; ebt += f.ebt||0; }
+        const sd = (sodraCache[c.jar_kodas]||[]).filter(x=>x.period_year===yr);
+        if (sd.length) {
+          const avgSal = sd.reduce((a,x)=>a+(x.avg_salary||0),0)/sd.length;
+          const avgEmp = sd.reduce((a,x)=>a+(x.employees_avg||0),0)/sd.length;
+          if (avgSal>0) { salSum+=avgSal; salN++; }
+          if (avgEmp>0) { empSum+=avgEmp; empN++; }
+        }
+      });
+      const emp = empN>0 ? empSum/empN : 0;
+      return { rev, ebt, ebtM: rev>0?Math.round(ebt/rev*1000)/10:null, rpe: emp>0?Math.round(rev/emp):null, sal: salN>0?Math.round(salSum/salN):null };
+    } else {
+      const f = (financialsCache[yr]||{})[s.jar];
+      if (!f) return null;
+      const sd = (window._lastSodra||[]).filter(x=>x.period_year===yr);
+      const avgEmp = sd.length ? sd.reduce((a,x)=>a+(x.employees_avg||0),0)/sd.length : 0;
+      const avgSal = sd.length ? sd.reduce((a,x)=>a+(x.avg_salary||0),0)/sd.length : 0;
+      return {
+        rev: f.revenue||0,
+        ebt: f.ebt||0,
+        ebtM: f.revenue>0 ? Math.round((f.ebt||0)/f.revenue*1000)/10 : null,
+        rpe: avgEmp>0 ? Math.round((f.revenue||0)/avgEmp) : null,
+        sal: avgSal>0 ? Math.round(avgSal) : null
+      };
+    }
+  }
+
+  function makeDatasets(metric) {
+    return series.map(s => ({
+      label: s.label,
+      data: years.map(yr => { const m=getMetrics(s,yr); return m?m[metric]:null; }),
+      borderColor: s.color, backgroundColor: 'transparent',
+      borderWidth: 2, pointRadius: 3, spanGaps: true, tension: 0.3
+    }));
+  }
+
+  const commonOpts = (yLabel, pct=false) => ({
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ labels:{ font:{size:10}, boxWidth:10, usePointStyle:true } } },
+    scales:{
+      y:{ ticks:{ callback: v => pct ? v+'%' : (Math.abs(v)>=1e6?(v/1e6).toFixed(1)+'M':Math.abs(v)>=1e3?(v/1e3).toFixed(0)+'K':v), font:{size:10} } },
+      x:{ ticks:{ font:{size:10} } }
+    }
+  });
+
+  // Chart 1: Revenue
+  const nSeries = series.length;
+  const title = hasCompanies ? `${nSeries} compan${nSeries>1?'ies':'y'}` : `${nSeries} sector${nSeries>1?'s':''}`;
+  document.getElementById('trend-title-rev').textContent = `Revenue (€) — ${title}`;
+  if(charts['trend_rev']) charts['trend_rev'].destroy();
+  charts['trend_rev'] = new Chart(document.getElementById('trend-chart-rev'), {
+    type:'line', data:{labels:years, datasets:makeDatasets('rev')}, options:commonOpts('Revenue (€)')
+  });
+
+  // Chart 2: EBT Margin %
+  document.getElementById('trend-title-ebt').textContent = `EBT Margin % — ${title}`;
+  if(charts['trend_ebt']) charts['trend_ebt'].destroy();
+  charts['trend_ebt'] = new Chart(document.getElementById('trend-chart-ebt'), {
+    type:'line', data:{labels:years, datasets:makeDatasets('ebtM')}, options:commonOpts('EBT Margin %', true)
+  });
+
+  // Chart 3: Revenue per employee
+  document.getElementById('trend-title-rpe').textContent = `Revenue / Employee (€) — ${title}`;
+  if(charts['trend_rpe']) charts['trend_rpe'].destroy();
+  charts['trend_rpe'] = new Chart(document.getElementById('trend-chart-rpe'), {
+    type:'line', data:{labels:years, datasets:makeDatasets('rpe')}, options:commonOpts('Rev/Employee (€)')
+  });
+
+  // Chart 4: Average salary
+  document.getElementById('trend-title-sal').textContent = `Avg Salary (€/mo) — ${title}`;
+  if(charts['trend_sal']) charts['trend_sal'].destroy();
+  charts['trend_sal'] = new Chart(document.getElementById('trend-chart-sal'), {
+    type:'line', data:{labels:years, datasets:makeDatasets('sal')}, options:commonOpts('Avg Salary (€)')
+  });
+}
+
+
 function updateSectorTable() {
   const wrap = document.getElementById('sector-table-wrap');
   if (!wrap) return; // not rendered yet
@@ -1244,8 +1363,8 @@ async function exportMultiCompany() {
   const sodraAll = {};
   for (let i = 0; i < companies.length; i += 20) {
     const batch = companies.slice(i, i+20);
-    const jars = batch.map(c=>`jar_kodas=eq.${c.jar_kodas}`).join(',');
-    const rows = await sbGet(`sodra_workforce?select=jar_kodas,period_year,period_month,employees_avg,avg_salary&or=(${jars})&order=jar_kodas,period_year,period_month&limit=10000`);
+    const jars = batch.map(c=>c.jar_kodas).join(',');
+    const rows = await sbGet(`sodra_workforce?select=jar_kodas,period_year,period_month,employees_avg,avg_salary&jar_kodas=in.(${jars})&order=jar_kodas,period_year,period_month&limit=10000`);
     rows.forEach(x => { if (!sodraAll[x.jar_kodas]) sodraAll[x.jar_kodas]=[]; sodraAll[x.jar_kodas].push(x); });
   }
 
@@ -1324,8 +1443,8 @@ async function exportSectorData() {
   const batchSize = 20;
   for (let i = 0; i < companies.length; i += batchSize) {
     const batch = companies.slice(i, i+batchSize);
-    const jars = batch.map(c=>`jar_kodas=eq.${c.jar_kodas}`).join(',');
-    const rows = await sbGet(`sodra_workforce?select=jar_kodas,period_year,period_month,employees_avg,avg_salary&or=(${jars})&order=jar_kodas,period_year,period_month&limit=10000`);
+    const jars = batch.map(c=>c.jar_kodas).join(',');
+    const rows = await sbGet(`sodra_workforce?select=jar_kodas,period_year,period_month,employees_avg,avg_salary&jar_kodas=in.(${jars})&order=jar_kodas,period_year,period_month&limit=10000`);
     rows.forEach(x => {
       if (!sodraAll[x.jar_kodas]) sodraAll[x.jar_kodas] = [];
       sodraAll[x.jar_kodas].push(x);
@@ -1632,12 +1751,29 @@ function toggleSector(code, name) {
     window.selectedSectors.delete(code);
   } else {
     window.selectedSectors.add(code);
+    // Pre-load SODRA for this sector in background
+    loadSectorSodra(code);
   }
   renderSectorTags();
   renderSectorTopbarDD(filterSectorOptions());
-  // Keep dropdown open for multi-select
   document.getElementById('sector-dd-topbar').style.display = 'block';
   applyFilters();
+}
+
+async function loadSectorSodra(code) {
+  if (!window._sectorSodraCache) window._sectorSodraCache = {};
+  const cos = allCompanies.filter(c => c.evrk_code === code);
+  for (let i = 0; i < cos.length; i += 30) {
+    const batch = cos.slice(i, i+30);
+    const jars = batch.map(c=>c.jar_kodas).join(',');
+    const rows = await sbGet(`sodra_workforce?select=jar_kodas,period_year,period_month,employees_avg,avg_salary&jar_kodas=in.(${jars})&order=jar_kodas,period_year&limit=10000`);
+    rows.forEach(x => {
+      if (!window._sectorSodraCache[x.jar_kodas]) window._sectorSodraCache[x.jar_kodas] = [];
+      window._sectorSodraCache[x.jar_kodas].push(x);
+    });
+  }
+  // Rebuild charts after SODRA loads
+  updateTrendChart();
 }
 
 function showSectorTopbar() {
