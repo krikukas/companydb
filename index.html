@@ -108,7 +108,7 @@ select{padding:7px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;b
     <option value="2024">2024</option><option value="2023">2023</option>
     <option value="2022">2022</option><option value="2021">2021</option><option value="2020">2020</option>
   </select>
-  <button class="btn btn-green" onclick="exportExcel()">Export to Excel</button>
+  <button class="btn btn-green" onclick="smartExport()">Export to Excel</button>
   <span id="status" style="font-size:12px;color:#888"></span>
 </div>
 
@@ -952,10 +952,33 @@ function exportSectorTable() {
   XLSX.writeFile(wb, `Sector_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
+// ── Smart export — company detail if on detail tab, else filtered list ────────
+function smartExport() {
+  const detailActive = document.getElementById('view-detail')?.classList.contains('active');
+  if (detailActive && selectedJar) {
+    exportCompanyDetail();
+  } else {
+    exportExcel();
+  }
+}
+
 // ── Export company detail to Excel ───────────────────────────────────────────
-function exportCompanyDetail() {
+async function exportCompanyDetail() {
   const c = allCompanies.find(x => x.jar_kodas === selectedJar);
   if (!c) return;
+
+  // Wait for all years to load if still loading
+  if (!window.allYearsLoaded) {
+    const btn = event?.target;
+    if (btn) { btn.textContent = 'Loading years...'; btn.disabled = true; }
+    await new Promise(resolve => {
+      const check = setInterval(() => {
+        if (window.allYearsLoaded) { clearInterval(check); resolve(); }
+      }, 500);
+      setTimeout(() => { clearInterval(check); resolve(); }, 30000); // max 30s wait
+    });
+    if (btn) { btn.textContent = 'Export to Excel'; btn.disabled = false; }
+  }
 
   const wb = XLSX.utils.book_new();
   const sodra = window._lastSodra || [];
