@@ -389,11 +389,13 @@ async function init() {
   for (let i = 0; i < restYears.length; i++) {
     await loadYearFin(restYears[i]);
     setStatus(all.length.toLocaleString() + ' companies | loaded ' + restYears[i] + ' financials...');
+    if (selectedJar && window._lastSodra) rebuildFinTable(selectedJar, window._lastSodra);
   }
 
   // Save cache
   saveCache(all, financialsCache);
   setStatus(all.length.toLocaleString() + ' companies | all years loaded | cached for 12h');
+  if (selectedJar && window._lastSodra) rebuildFinTable(selectedJar, window._lastSodra);
 }
 
 
