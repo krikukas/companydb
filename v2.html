@@ -1,0 +1,1939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CompanyDB v2 — Sector Overview</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+/* ---- Confidentus brand palette ---- */
+:root{
+  --c-earth:#454132;        /* primary dark — Pantone 418 */
+  --c-earth-soft:#5c5745;   /* lifted earth for hover */
+  --c-gold:#A77A00;         /* primary accent — Pantone 126 */
+  --c-gold-bright:#E9AC14;  /* bright accent for highlights */
+  --c-gold-soft:#D4AB42;    /* soft gold for secondary fills */
+  --c-olive:#AEA730;        /* supporting */
+  --c-yellow:#E9D32A;       /* supporting */
+  --c-copper:#AC6525;       /* supporting */
+  --c-orange:#E67C21;       /* supporting */
+  --c-bg:#faf8f3;           /* warm off-white background */
+  --c-surface:#ffffff;
+  --c-border:#e5e1d5;       /* warm-tinted border */
+  --c-text:#2a2820;         /* deep earth text */
+  --c-text-soft:#6a6552;
+  --c-success:#4d7c2c;      /* muted olive-green for positives */
+  --c-danger:#a63b1f;       /* muted copper-red for negatives */
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:'Calibri','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--c-bg);color:var(--c-text);font-size:14px}
+
+/* ---- Top bar (dark earth with gold accent) ---- */
+.topbar{background:var(--c-earth);border-bottom:3px solid var(--c-gold);padding:10px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:100;color:#fff}
+.topbar h1{font-size:17px;font-weight:700;white-space:nowrap;color:#fff;letter-spacing:.06em;text-transform:uppercase}
+.topbar h1 .sub{color:var(--c-gold-bright);font-weight:400;font-size:12px;letter-spacing:.02em;text-transform:none;margin-left:6px}
+.topbar .spacer{flex:1}
+
+.btn{padding:7px 14px;border:1px solid var(--c-border);border-radius:4px;font-size:13px;background:#fff;cursor:pointer;white-space:nowrap;font-weight:600;font-family:inherit;color:var(--c-text);transition:all .12s ease}
+.btn:hover{background:#f5f2e8}
+.btn-primary{background:var(--c-gold);color:#fff;border-color:var(--c-gold)}
+.btn-primary:hover{background:#8f6700;border-color:#8f6700}
+.btn-clear{background:transparent;color:#fff;border-color:rgba(255,255,255,.35)}
+.btn-clear:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.6)}
+
+/* ---- Multi-select ---- */
+.ms-wrap{position:relative;min-width:240px;flex:1;max-width:400px}
+.ms-input{min-height:34px;padding:4px 6px;border:1px solid var(--c-border);border-radius:4px;background:#fff;display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:text}
+.ms-input:focus-within{border-color:var(--c-gold);box-shadow:0 0 0 2px rgba(167,122,0,.15)}
+.ms-tag{background:rgba(167,122,0,.12);color:var(--c-earth);padding:3px 8px;border-radius:3px;font-size:12px;display:inline-flex;align-items:center;gap:5px;max-width:200px;border:1px solid rgba(167,122,0,.25);font-weight:500}
+.ms-tag .tag-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-tag .tag-x{cursor:pointer;font-weight:bold;color:var(--c-gold);opacity:.8}
+.ms-tag .tag-x:hover{opacity:1;color:var(--c-earth)}
+.ms-text{border:none;outline:none;flex:1;min-width:80px;padding:2px 4px;font-size:13px;background:transparent;color:var(--c-text);font-family:inherit}
+.ms-text::placeholder{color:#9a9480}
+.ms-dropdown{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--c-border);border-radius:4px;margin-top:2px;max-height:340px;overflow-y:auto;z-index:1000;box-shadow:0 8px 24px rgba(69,65,50,.15);display:none}
+.ms-dropdown.open{display:block}
+.ms-option{padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:13px;border-bottom:1px solid #f5f2e8}
+.ms-option:hover{background:#faf8f0}
+.ms-option input[type=checkbox]{margin:0;cursor:pointer;accent-color:var(--c-gold)}
+.ms-option .opt-meta{color:#9a9480;font-size:11px;margin-left:auto;white-space:nowrap}
+
+/* ---- Main layout ---- */
+.main{padding:18px;max-width:1700px;margin:0 auto}
+
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--c-border);margin-bottom:18px;overflow-x:auto;scrollbar-width:thin}
+.tab{padding:11px 18px;cursor:pointer;font-size:13px;font-weight:600;color:var(--c-text-soft);border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap;background:transparent;border-top:none;border-left:none;border-right:none;font-family:inherit;letter-spacing:.02em;transition:color .12s}
+.tab:hover{color:var(--c-earth)}
+.tab.active{color:var(--c-earth);border-bottom-color:var(--c-gold);background:rgba(167,122,0,.04)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ---- Cards / boxes ---- */
+.card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;padding:18px;margin-bottom:16px}
+.card h2{font-size:15px;font-weight:700;margin-bottom:14px;color:var(--c-earth);text-transform:uppercase;letter-spacing:.04em}
+.card h3{font-size:12px;font-weight:700;margin-bottom:10px;color:var(--c-text-soft);text-transform:uppercase;letter-spacing:.06em}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:var(--c-surface);border:1px solid var(--c-border);border-top:3px solid var(--c-gold);border-radius:4px;padding:16px 18px}
+.kpi .kpi-label{font-size:10.5px;color:var(--c-text-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;font-weight:700}
+.kpi .kpi-value{font-size:24px;font-weight:700;color:var(--c-earth);line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi .kpi-change{font-size:12px;margin-top:6px;font-weight:600}
+.kpi .kpi-change.up{color:var(--c-success)}
+.kpi .kpi-change.down{color:var(--c-danger)}
+.kpi .kpi-change.flat{color:var(--c-text-soft);font-weight:500}
+
+/* ---- Chart grids ---- */
+.chart-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.chart-grid-1{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:16px}
+@media (max-width:900px){.chart-grid-2{grid-template-columns:1fr}}
+.chart-box{background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;padding:16px}
+.chart-box h3{font-size:12px;font-weight:700;margin-bottom:12px;color:var(--c-text-soft);text-transform:uppercase;letter-spacing:.06em}
+.chart-container{position:relative;height:280px}
+.chart-container-lg{position:relative;height:340px}
+
+/* ---- Tables ---- */
+.tbl-wrap{overflow-x:auto;background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #f0ebdd;white-space:nowrap}
+th{background:var(--c-earth);color:#fff;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;position:sticky;top:0;border-bottom:2px solid var(--c-gold)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+tr:hover td{background:#faf8f0}
+tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;color:var(--c-earth)}
+.pct-up{color:var(--c-success);font-weight:600}
+.pct-down{color:var(--c-danger);font-weight:600}
+.pct-flat{color:var(--c-text-soft)}
+.show-more-row td{text-align:center;padding:12px;background:#faf8f0;cursor:pointer;color:var(--c-gold);font-weight:600;letter-spacing:.03em}
+.show-more-row:hover td{background:#f3efe0;color:var(--c-earth)}
+.checkbox-cell{text-align:center;width:32px}
+.checkbox-cell input{cursor:pointer;accent-color:var(--c-gold)}
+
+/* ---- Side-by-side for pie + table ---- */
+.pie-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+@media (max-width:900px){.pie-grid{grid-template-columns:1fr}}
+
+/* ---- Status / overlays ---- */
+.status-bar{padding:10px 14px;background:rgba(167,122,0,.08);border:1px solid rgba(167,122,0,.25);border-left:3px solid var(--c-gold);border-radius:3px;color:var(--c-earth);font-size:13px;margin-bottom:14px;font-weight:500}
+.status-bar.error{background:rgba(166,59,31,.08);border-color:rgba(166,59,31,.3);border-left-color:var(--c-danger);color:var(--c-danger)}
+.status-bar.success{background:rgba(77,124,44,.08);border-color:rgba(77,124,44,.3);border-left-color:var(--c-success);color:var(--c-success)}
+.empty-state{padding:48px 20px;text-align:center;color:var(--c-text-soft);font-size:14px;background:var(--c-surface);border:1px dashed var(--c-border);border-radius:4px}
+
+.loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(250,248,243,.96);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:18px}
+.loading-overlay .spinner{width:44px;height:44px;border:3px solid var(--c-border);border-top-color:var(--c-gold);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-overlay .msg{color:var(--c-earth);font-size:14px;font-weight:600;letter-spacing:.02em}
+
+/* ---- Section header (sector title + selected companies) ---- */
+.overview-header{margin-bottom:14px;padding:14px 18px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;border-left:4px solid var(--c-gold)}
+.overview-header .title{font-size:20px;font-weight:700;color:var(--c-earth);letter-spacing:.01em}
+.sector-names{color:var(--c-text-soft);font-size:12.5px;margin-top:4px}
+.overview-header .selected-companies-line{margin-top:8px;font-size:12px;color:var(--c-earth);font-weight:500;padding-top:6px;border-top:1px solid #f0ebdd}
+.overview-header .selected-companies-line b{color:var(--c-gold)}
+
+.section-heading{font-size:14px;font-weight:700;color:var(--c-earth);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--c-border)}
+</style>
+</head>
+<body>
+
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="spinner"></div>
+  <div class="msg" id="loadingMsg">Loading database…</div>
+</div>
+
+<div class="topbar">
+  <h1>Confidentus<span class="sub">CompanyDB · Sector analysis</span></h1>
+
+  <!-- Sectors multi-select -->
+  <div class="ms-wrap" id="sectorWrap">
+    <div class="ms-input" id="sectorInput" onclick="openDropdown('sector')">
+      <span id="sectorTags"></span>
+      <input type="text" class="ms-text" id="sectorSearch" placeholder="Search sectors (EVRK)…" oninput="filterMsOptions('sector')" onfocus="openDropdown('sector')">
+    </div>
+    <div class="ms-dropdown" id="sectorDropdown"></div>
+  </div>
+
+  <!-- Companies multi-select -->
+  <div class="ms-wrap" id="companyWrap">
+    <div class="ms-input" id="companyInput" onclick="openDropdown('company')">
+      <span id="companyTags"></span>
+      <input type="text" class="ms-text" id="companySearch" placeholder="Search companies…" oninput="filterMsOptions('company')" onfocus="openDropdown('company')">
+    </div>
+    <div class="ms-dropdown" id="companyDropdown"></div>
+  </div>
+
+  <div class="spacer"></div>
+  <button class="btn btn-clear" onclick="clearAll()">Clear all</button>
+  <button class="btn btn-primary" onclick="exportExcel()">Export Excel</button>
+</div>
+
+<div class="main">
+  <div id="statusBar" class="status-bar" style="display:none"></div>
+
+  <!-- Tabs -->
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="overview" onclick="switchTab('overview')">Overview</button>
+    <!-- company tabs inserted dynamically -->
+  </div>
+
+  <!-- Overview tab -->
+  <div class="tab-panel active" id="tab-overview">
+    <div id="overviewContent">
+      <div class="empty-state">
+        Select one or more sectors or companies above to see the sector overview.
+      </div>
+    </div>
+  </div>
+
+  <!-- Company detail tabs inserted dynamically -->
+  <div id="companyTabPanels"></div>
+
+</div>
+
+<script>
+/* ==========================================================
+ *  Configuration
+ * ========================================================== */
+const SUPABASE_URL = 'https://fxapkoylegdibrhsajbo.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_gZir2IvzDxdf39kOzAmVGQ_PKK4pKdA';
+const CACHE_KEY = 'companydb_v2_cache';
+const CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
+const PAGE_SIZE = 1000;
+const YEARS = [2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025];
+const CURRENT_YEAR = 2025;
+const PREV_YEAR = 2024;
+
+/* ==========================================================
+ *  State
+ * ========================================================== */
+const state = {
+  allCompanies: [],          // [{jar_kodas, name, evrk_code, evrk_name, ...}]
+  sectorOptions: [],         // [{evrk_code, evrk_name, count}]
+  financials: {},            // {jar_kodas: [{year, revenue, ebt, ...}, ...]}
+  sodra: {},                 // {jar_kodas: {avg_employees_2024, avg_salary_2024, ...}}
+  selectedSectors: new Set(),// evrk_codes selected
+  selectedCompanies: new Map(), // jar_kodas -> {jar_kodas, name, evrk_code, evrk_name}
+  showAllInTable: false,     // toggled by "show more"
+  currentTab: 'overview',
+  dataLoaded: false
+};
+
+// Expose for debugging
+window.state = state;
+
+/* ==========================================================
+ *  Supabase helpers
+ * ========================================================== */
+async function sbFetch(path) {
+  const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  const res = await fetch(url, {
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Accept': 'application/json'
+    }
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase ${res.status}: ${text.slice(0,200)}`);
+  }
+  return res.json();
+}
+
+async function sbFetchAll(path) {
+  const results = [];
+  let offset = 0;
+  while (true) {
+    const sep = path.includes('?') ? '&' : '?';
+    const pageUrl = `${path}${sep}limit=${PAGE_SIZE}&offset=${offset}`;
+    const data = await sbFetch(pageUrl);
+    results.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+    if (offset > 200000) break; // safety
+  }
+  return results;
+}
+
+/* ==========================================================
+ *  Cache
+ * ========================================================== */
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (Date.now() - cached.ts > CACHE_TTL) return null;
+    return cached;
+  } catch(e) { return null; }
+}
+
+function saveCache() {
+  try {
+    const payload = {
+      ts: Date.now(),
+      allCompanies: state.allCompanies,
+      financials: state.financials,
+      sodra: state.sodra
+    };
+    const str = JSON.stringify(payload);
+    // ~10MB browser limit -- if too big, skip caching
+    if (str.length < 9 * 1024 * 1024) {
+      localStorage.setItem(CACHE_KEY, str);
+    } else {
+      console.warn('Cache too large, skipping:', (str.length/1024/1024).toFixed(1), 'MB');
+    }
+  } catch(e) { console.warn('Cache save failed:', e); }
+}
+
+function clearCache() {
+  localStorage.removeItem(CACHE_KEY);
+}
+
+/* ==========================================================
+ *  Data loading
+ * ========================================================== */
+async function loadAllData() {
+  const cached = loadCache();
+  if (cached) {
+    state.allCompanies = cached.allCompanies;
+    state.financials = cached.financials;
+    state.sodra = cached.sodra;
+    buildSectorOptions();
+    state.dataLoaded = true;
+    return { fromCache: true };
+  }
+
+  setLoading('Loading companies…');
+  const companies = await sbFetchAll('companies?select=jar_kodas,company_name,evrk_code,evrk_name,legal_form');
+  // Normalize to our internal shape: .name field for UI
+  state.allCompanies = companies.map(c => ({
+    jar_kodas: c.jar_kodas,
+    name: c.company_name || '',
+    evrk_code: c.evrk_code,
+    evrk_name: c.evrk_name,
+    legal_form: c.legal_form
+  }));
+  buildSectorOptions();
+
+  setLoading(`Loading financials (${YEARS.length} years)…`);
+  const fins = await sbFetchAll('financials?select=jar_kodas,fin_year,revenue,ebt,net_profit');
+  for (const f of fins) {
+    const normalized = {
+      jar_kodas: f.jar_kodas,
+      year: f.fin_year,       // normalize to .year
+      revenue: f.revenue,
+      ebt: f.ebt,
+      net_profit: f.net_profit
+    };
+    if (!state.financials[f.jar_kodas]) state.financials[f.jar_kodas] = [];
+    state.financials[f.jar_kodas].push(normalized);
+  }
+  // Sort by year
+  for (const k in state.financials) {
+    state.financials[k].sort((a,b) => a.year - b.year);
+  }
+
+  setLoading('Loading SODRA workforce data…');
+  // Real schema: jar_kodas, period_year, period_month, employees_avg, avg_salary
+  const sodra = await sbFetchAll('sodra_workforce?select=jar_kodas,period_year,employees_avg,avg_salary');
+  // Aggregate to year-level (averaging across months in each year)
+  const sByCompanyYear = {};
+  for (const s of sodra) {
+    if (!s.period_year) continue;
+    const y = s.period_year;
+    const k = s.jar_kodas;
+    if (!sByCompanyYear[k]) sByCompanyYear[k] = {};
+    if (!sByCompanyYear[k][y]) sByCompanyYear[k][y] = { emps: [], sals: [] };
+    if (s.employees_avg != null) sByCompanyYear[k][y].emps.push(s.employees_avg);
+    if (s.avg_salary != null && s.avg_salary > 0) sByCompanyYear[k][y].sals.push(s.avg_salary);
+  }
+  for (const k in sByCompanyYear) {
+    state.sodra[k] = {};
+    for (const y in sByCompanyYear[k]) {
+      const {emps, sals} = sByCompanyYear[k][y];
+      state.sodra[k][y] = {
+        avg_employees: emps.length ? emps.reduce((a,b)=>a+b,0)/emps.length : null,
+        avg_salary: sals.length ? sals.reduce((a,b)=>a+b,0)/sals.length : null
+      };
+    }
+  }
+
+  saveCache();
+  state.dataLoaded = true;
+  return { fromCache: false };
+}
+
+function buildSectorOptions() {
+  const m = {};
+  for (const c of state.allCompanies) {
+    if (!c.evrk_code) continue;
+    const k = c.evrk_code;
+    if (!m[k]) m[k] = { evrk_code: c.evrk_code, evrk_name: c.evrk_name || c.evrk_code, count: 0 };
+    m[k].count++;
+  }
+  state.sectorOptions = Object.values(m).sort((a,b) => b.count - a.count);
+}
+
+function setLoading(msg) {
+  const el = document.getElementById('loadingMsg');
+  if (el) el.textContent = msg;
+}
+
+function hideLoading() {
+  const o = document.getElementById('loadingOverlay');
+  if (o) o.style.display = 'none';
+}
+
+function showStatus(msg, kind) {
+  const b = document.getElementById('statusBar');
+  b.textContent = msg;
+  b.className = 'status-bar' + (kind ? ' ' + kind : '');
+  b.style.display = 'block';
+  if (kind === 'success') setTimeout(() => b.style.display = 'none', 3000);
+}
+
+
+/* ==========================================================
+ *  Multi-select UI
+ * ========================================================== */
+function renderMsOptions(kind) {
+  const dd = document.getElementById(kind + 'Dropdown');
+  const searchEl = document.getElementById(kind + 'Search');
+  const q = (searchEl.value || '').toLowerCase().trim();
+
+  let items;
+  if (kind === 'sector') {
+    items = state.sectorOptions.map(s => ({
+      key: s.evrk_code,
+      label: s.evrk_name,
+      meta: `${s.count.toLocaleString()} co.`,
+      checked: state.selectedSectors.has(s.evrk_code)
+    }));
+  } else {
+    // Companies — show only if search has 2+ chars, OR show already-selected + first 50
+    items = state.allCompanies.map(c => ({
+      key: c.jar_kodas,
+      label: c.name,
+      meta: c.evrk_name || '',
+      checked: state.selectedCompanies.has(c.jar_kodas)
+    }));
+    if (q.length < 2) {
+      // show only selected + top 50 by name (alphabetical sample)
+      items = items.filter(x => x.checked).concat(items.filter(x => !x.checked).slice(0, 50));
+    }
+  }
+
+  // Filter by query
+  if (q) {
+    items = items.filter(x => x.label.toLowerCase().includes(q) || (x.meta||'').toLowerCase().includes(q));
+  }
+  items = items.slice(0, 400);
+
+  dd.innerHTML = items.map(x => `
+    <label class="ms-option">
+      <input type="checkbox" ${x.checked ? 'checked' : ''} onchange="toggleMsItem('${kind}', ${JSON.stringify(x.key).replace(/"/g,'&quot;')})">
+      <span>${escapeHtml(x.label)}</span>
+      <span class="opt-meta">${escapeHtml(x.meta)}</span>
+    </label>
+  `).join('');
+
+  if (!items.length) dd.innerHTML = '<div class="ms-option" style="color:#999">No matches</div>';
+}
+
+function filterMsOptions(kind) {
+  renderMsOptions(kind);
+  openDropdown(kind);
+}
+
+function openDropdown(kind) {
+  document.getElementById(kind + 'Dropdown').classList.add('open');
+  renderMsOptions(kind);
+}
+
+function closeDropdowns() {
+  document.querySelectorAll('.ms-dropdown').forEach(d => d.classList.remove('open'));
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.ms-wrap')) closeDropdowns();
+});
+
+function toggleMsItem(kind, key) {
+  if (kind === 'sector') {
+    if (state.selectedSectors.has(key)) state.selectedSectors.delete(key);
+    else state.selectedSectors.add(key);
+  } else {
+    if (state.selectedCompanies.has(key)) {
+      state.selectedCompanies.delete(key);
+    } else {
+      const c = state.allCompanies.find(x => x.jar_kodas === key);
+      if (c) state.selectedCompanies.set(key, c);
+    }
+  }
+  renderTags(kind);
+  renderMsOptions(kind);
+  refreshUI();
+}
+
+function renderTags(kind) {
+  if (kind === 'sector' || !kind) {
+    const tagWrap = document.getElementById('sectorTags');
+    const tags = [...state.selectedSectors].map(k => {
+      const s = state.sectorOptions.find(x => x.evrk_code === k);
+      const label = s ? s.evrk_name : k;
+      return `<span class="ms-tag"><span class="tag-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span><span class="tag-x" onclick="event.stopPropagation(); toggleMsItem('sector', ${JSON.stringify(k).replace(/"/g,'&quot;')})">×</span></span>`;
+    }).join('');
+    tagWrap.innerHTML = tags;
+  }
+  if (kind === 'company' || !kind) {
+    const tagWrap = document.getElementById('companyTags');
+    const tags = [...state.selectedCompanies.values()].map(c =>
+      `<span class="ms-tag"><span class="tag-label" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span><span class="tag-x" onclick="event.stopPropagation(); toggleMsItem('company', ${JSON.stringify(c.jar_kodas).replace(/"/g,'&quot;')})">×</span></span>`
+    ).join('');
+    tagWrap.innerHTML = tags;
+  }
+}
+
+function clearAll() {
+  state.selectedSectors.clear();
+  state.selectedCompanies.clear();
+  state.showAllInTable = false;
+  renderTags();
+  refreshUI();
+  showStatus('Selection cleared', 'success');
+}
+
+/* ==========================================================
+ *  Tab switching
+ * ========================================================== */
+function switchTab(id) {
+  state.currentTab = id;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + id));
+  // Redraw charts on tab switch because hidden charts may not size correctly
+  window.dispatchEvent(new Event('resize'));
+}
+
+function rebuildTabs() {
+  const tabsEl = document.getElementById('tabs');
+  // Clear extra tabs beyond overview
+  [...tabsEl.querySelectorAll('.tab')].forEach((t,i) => { if (i > 0) t.remove(); });
+  // Add a tab for each selected company
+  for (const c of state.selectedCompanies.values()) {
+    const b = document.createElement('button');
+    b.className = 'tab';
+    b.dataset.tab = 'company-' + c.jar_kodas;
+    b.textContent = shortName(c.name, 30);
+    b.title = c.name;
+    b.onclick = () => switchTab('company-' + c.jar_kodas);
+    tabsEl.appendChild(b);
+  }
+  // If current tab no longer exists, switch to overview
+  const stillExists = [...tabsEl.querySelectorAll('.tab')].some(t => t.dataset.tab === state.currentTab);
+  if (!stillExists) switchTab('overview');
+}
+
+
+/* ==========================================================
+ *  Formatters & helpers
+ * ========================================================== */
+function fmtEUR(n, digits=0) {
+  if (n == null || isNaN(n)) return '—';
+  return Math.round(n).toLocaleString('en-US', { maximumFractionDigits: digits });
+}
+function fmtPct(n, digits=1) {
+  if (n == null || isNaN(n)) return '—';
+  return (n).toFixed(digits) + '%';
+}
+function fmtPctSigned(n, digits=1) {
+  if (n == null || isNaN(n)) return '—';
+  const sign = n > 0 ? '+' : '';
+  return sign + (n).toFixed(digits) + '%';
+}
+function pctClass(n) {
+  if (n == null || isNaN(n)) return 'pct-flat';
+  if (n > 0.05) return 'pct-up';
+  if (n < -0.05) return 'pct-down';
+  return 'pct-flat';
+}
+function shortName(s, max=40) {
+  if (!s) return '';
+  return s.length > max ? s.slice(0, max-1) + '…' : s;
+}
+function firstWord(s) {
+  if (!s) return '';
+  // Strip quotes then take first meaningful word
+  const cleaned = s.replace(/[„"""'']/g, '').trim();
+  const parts = cleaned.split(/\s+/);
+  // Skip legal form if present
+  const legalForms = new Set(['UAB','AB','MB','VšĮ','VŠĮ','IĮ','TŪB','KŪB']);
+  for (const p of parts) {
+    if (!legalForms.has(p.toUpperCase())) return p;
+  }
+  return parts[0] || s;
+}
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function median(arr) {
+  const a = arr.filter(x => x != null && !isNaN(x)).sort((x,y) => x-y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length/2);
+  return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
+}
+function sum(arr) {
+  return arr.filter(x => x != null && !isNaN(x)).reduce((a,b) => a+b, 0);
+}
+
+/* ==========================================================
+ *  Sector cohort logic
+ * ========================================================== */
+function getCohort() {
+  // Returns: { companies: [...], sectors: [evrk_code...], sectorNames: [...] }
+  // Cohort = all companies whose evrk_code is in selectedSectors OR any selected company's evrk
+  const selSectors = new Set(state.selectedSectors);
+  for (const c of state.selectedCompanies.values()) {
+    if (c.evrk_code) selSectors.add(c.evrk_code);
+  }
+  const companies = state.allCompanies.filter(c => selSectors.has(c.evrk_code));
+  const sectorNames = [];
+  for (const k of selSectors) {
+    const s = state.sectorOptions.find(x => x.evrk_code === k);
+    if (s) sectorNames.push(s.evrk_name);
+  }
+  return { companies, sectors: [...selSectors], sectorNames };
+}
+
+function getCompanyYearData(jar, year) {
+  const fins = (state.financials[jar] || []).find(f => f.year === year);
+  const sodra = state.sodra[jar] ? state.sodra[jar][year] : null;
+  return {
+    revenue: fins ? fins.revenue : null,
+    ebt: fins ? fins.ebt : null,
+    net_profit: fins ? fins.net_profit : null,
+    employees: sodra ? sodra.avg_employees : null,
+    salary: sodra ? sodra.avg_salary : null
+  };
+}
+
+// Derived per-company per-year numbers
+function getCompanyYearDerived(jar, year) {
+  const d = getCompanyYearData(jar, year);
+  const ebt_margin = (d.revenue && d.revenue > 0 && d.ebt != null) ? (d.ebt / d.revenue) * 100 : null;
+  const rev_per_emp = (d.employees && d.employees > 0 && d.revenue != null) ? d.revenue / d.employees : null;
+  return { ...d, ebt_margin, rev_per_emp };
+}
+
+// YoY percent change helper
+function yoyPct(curr, prev) {
+  if (curr == null || prev == null || prev === 0) return null;
+  return ((curr - prev) / Math.abs(prev)) * 100;
+}
+
+/* ==========================================================
+ *  Sector aggregates
+ * ========================================================== */
+function sectorTotalsByYear(companies, year) {
+  // Returns: { total_revenue, total_ebt, weighted_ebt_margin, median_rev_per_emp, median_salary, n_with_revenue, n_profitable }
+  const revs = [], ebts = [], revPerEmps = [], sals = [];
+  let n = 0;
+  for (const c of companies) {
+    const d = getCompanyYearDerived(c.jar_kodas, year);
+    if (d.revenue != null) { revs.push(d.revenue); n++; }
+    if (d.ebt != null) ebts.push(d.ebt);
+    if (d.rev_per_emp != null) revPerEmps.push(d.rev_per_emp);
+    if (d.salary != null) sals.push(d.salary);
+  }
+  const total_revenue = sum(revs);
+  const total_ebt = sum(ebts);
+  const weighted_ebt_margin = total_revenue > 0 ? (total_ebt / total_revenue) * 100 : null;
+  return {
+    total_revenue,
+    total_ebt,
+    weighted_ebt_margin,
+    median_rev_per_emp: median(revPerEmps),
+    median_salary: median(sals),
+    n_with_revenue: n,
+    n_companies: companies.length
+  };
+}
+
+
+/* ==========================================================
+ *  Chart instance registry (for cleanup before redraw)
+ * ========================================================== */
+// Apply Confidentus-branded defaults once
+if (window.Chart) {
+  Chart.defaults.font.family = "'Calibri','Segoe UI',sans-serif";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = '#2a2820';
+  Chart.defaults.borderColor = 'rgba(69,65,50,.08)';
+}
+const chartInstances = {};
+function destroyChart(id) {
+  if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+}
+function destroyAllCharts() {
+  for (const id in chartInstances) chartInstances[id].destroy();
+  for (const id in chartInstances) delete chartInstances[id];
+}
+
+/* ==========================================================
+ *  Overview rendering
+ * ========================================================== */
+function renderOverview() {
+  const wrap = document.getElementById('overviewContent');
+  const cohort = getCohort();
+
+  if (!cohort.companies.length) {
+    wrap.innerHTML = `<div class="empty-state">Select one or more sectors or companies above to see the sector overview.</div>`;
+    return;
+  }
+
+  // KPIs
+  const cur = sectorTotalsByYear(cohort.companies, CURRENT_YEAR);
+  const prev = sectorTotalsByYear(cohort.companies, PREV_YEAR);
+  const revGrowth = yoyPct(cur.total_revenue, prev.total_revenue);
+  const revPerEmpGrowth = yoyPct(cur.median_rev_per_emp, prev.median_rev_per_emp);
+  const salaryGrowth = yoyPct(cur.median_salary, prev.median_salary);
+
+  const selectedNames = [...state.selectedCompanies.values()].map(c => c.name);
+  const selectedLine = selectedNames.length
+    ? `<div class="selected-companies-line"><b>Selected:</b> ${selectedNames.map(escapeHtml).join(' · ')}</div>`
+    : '';
+
+  const sectorTitle = cohort.sectorNames.length === 1
+    ? cohort.sectorNames[0]
+    : `${cohort.sectorNames.length} merged sectors`;
+  const sectorSubtitle = cohort.sectorNames.length > 1
+    ? `<div class="sector-names">${cohort.sectorNames.map(escapeHtml).join(' · ')}</div>`
+    : '';
+
+  wrap.innerHTML = `
+    <div class="overview-header">
+      <div class="title">${escapeHtml(sectorTitle)}</div>
+      ${sectorSubtitle}
+      ${selectedLine}
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Companies in sector</div>
+        <div class="kpi-value">${cur.n_companies.toLocaleString()}</div>
+        <div class="kpi-change flat">${cur.n_with_revenue.toLocaleString()} reported ${CURRENT_YEAR} revenue</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Total revenue ${CURRENT_YEAR}</div>
+        <div class="kpi-value">€${fmtEUR(cur.total_revenue)}</div>
+        <div class="kpi-change ${revGrowth==null ? 'flat' : (revGrowth>=0 ? 'up' : 'down')}">
+          ${revGrowth==null ? '—' : fmtPctSigned(revGrowth) + ' YoY'}
+        </div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">EBT margin % (weighted)</div>
+        <div class="kpi-value">${fmtPct(cur.weighted_ebt_margin)}</div>
+        <div class="kpi-change flat">${PREV_YEAR}: ${fmtPct(prev.weighted_ebt_margin)}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Median revenue / employee</div>
+        <div class="kpi-value">€${fmtEUR(cur.median_rev_per_emp)}</div>
+        <div class="kpi-change ${revPerEmpGrowth==null ? 'flat' : (revPerEmpGrowth>=0 ? 'up' : 'down')}">
+          ${revPerEmpGrowth==null ? '—' : fmtPctSigned(revPerEmpGrowth) + ' YoY'}
+        </div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Median salary (monthly)</div>
+        <div class="kpi-value">€${fmtEUR(cur.median_salary)}</div>
+        <div class="kpi-change ${salaryGrowth==null ? 'flat' : (salaryGrowth>=0 ? 'up' : 'down')}">
+          ${salaryGrowth==null ? '—' : fmtPctSigned(salaryGrowth) + ' YoY'}
+        </div>
+      </div>
+    </div>
+
+    <!-- Pie chart + market share table -->
+    <div class="pie-grid">
+      <div class="chart-box">
+        <h3>Market share — Top 5 (${CURRENT_YEAR})</h3>
+        <div class="chart-container"><canvas id="pieChart"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <h3>Market share trend — Top 5 + selected</h3>
+        <div class="tbl-wrap" style="border:none;max-height:300px;overflow-y:auto"><table id="marketShareTable"></table></div>
+      </div>
+    </div>
+
+    <!-- Bubble chart -->
+    <div class="chart-grid-1">
+      <div class="chart-box">
+        <h3>Top 5 + selected — EBT margin vs Revenue (${CURRENT_YEAR})</h3>
+        <div class="chart-container-lg"><canvas id="bubbleChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Companies in sector table -->
+    <div class="card">
+      <h2>Companies in sector</h2>
+      <div class="tbl-wrap"><table id="companiesInSectorTable"></table></div>
+    </div>
+
+    <!-- Historical charts -->
+    <h2 class="section-heading">Historical trends (2015–2025)</h2>
+    <div class="chart-grid-2">
+      <div class="chart-box">
+        <h3>Revenue — sector total vs selected</h3>
+        <div class="chart-container"><canvas id="revHistChart"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <h3>EBT margin % — sector weighted vs selected</h3>
+        <div class="chart-container"><canvas id="marginHistChart"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <h3>Revenue per employee — sector median vs selected</h3>
+        <div class="chart-container"><canvas id="rpeHistChart"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <h3>Average salary — sector median vs selected</h3>
+        <div class="chart-container"><canvas id="salHistChart"></canvas></div>
+      </div>
+    </div>
+  `;
+
+  // Now draw everything
+  drawPieChart(cohort);
+  drawMarketShareTable(cohort);
+  drawBubbleChart(cohort);
+  renderCompaniesInSectorTable(cohort);
+  drawHistoricalCharts(cohort);
+}
+
+
+/* ==========================================================
+ *  Helper: Top-5 + selected (the "pool" used for pie, bubble, table)
+ * ========================================================== */
+function getTop5PlusSelected(companies, year) {
+  // Returns array of {c, revenue}, sorted
+  // Pool = top 5 by revenue in year + any selected companies not already in top 5
+  const withRev = companies
+    .map(c => ({ c, revenue: getCompanyYearData(c.jar_kodas, year).revenue }))
+    .filter(x => x.revenue != null && x.revenue > 0)
+    .sort((a,b) => b.revenue - a.revenue);
+  const top5 = withRev.slice(0, 5);
+  const top5Keys = new Set(top5.map(x => x.c.jar_kodas));
+  const selectedExtras = [];
+  for (const c of state.selectedCompanies.values()) {
+    if (!top5Keys.has(c.jar_kodas) && companies.some(x => x.jar_kodas === c.jar_kodas)) {
+      const rev = getCompanyYearData(c.jar_kodas, year).revenue;
+      if (rev != null) selectedExtras.push({ c, revenue: rev });
+    }
+  }
+  return { top5, selectedExtras };
+}
+
+/* ==========================================================
+ *  Pie chart — market share top 5 only
+ * ========================================================== */
+function drawPieChart(cohort) {
+  destroyChart('pieChart');
+  const year = CURRENT_YEAR;
+  const totalRev = sum(cohort.companies.map(c => getCompanyYearData(c.jar_kodas, year).revenue));
+  const { top5 } = getTop5PlusSelected(cohort.companies, year);
+
+  if (!top5.length || !totalRev) return;
+
+  const labels = top5.map(x => firstWord(x.c.name));
+  const data = top5.map(x => x.revenue);
+  const sumTop5 = sum(data);
+  const others = Math.max(0, totalRev - sumTop5);
+  if (others > 0) {
+    labels.push('Others');
+    data.push(others);
+  }
+
+  const selKeys = new Set([...state.selectedCompanies.keys()]);
+  const colors = top5.map(x => selKeys.has(x.c.jar_kodas) ? '#E9AC14' : '#A77A00');
+  if (others > 0) colors.push('#c9c2ae');
+
+  const ctx = document.getElementById('pieChart').getContext('2d');
+  chartInstances['pieChart'] = new Chart(ctx, {
+    type: 'pie',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#fff', borderWidth: 2 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, padding: 8 } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const pct = (ctx.parsed / totalRev) * 100;
+              return `${ctx.label}: €${fmtEUR(ctx.parsed)} (${pct.toFixed(1)}%)`;
+            }
+          }
+        },
+        datalabels: false
+      }
+    },
+    plugins: [{
+      id: 'pctLabels',
+      afterDatasetDraw(chart) {
+        const { ctx, data } = chart;
+        const dataset = chart.data.datasets[0];
+        const meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        meta.data.forEach((arc, i) => {
+          const pct = (dataset.data[i] / totalRev) * 100;
+          if (pct < 3) return;
+          const pos = arc.tooltipPosition();
+          ctx.fillText(pct.toFixed(1) + '%', pos.x, pos.y);
+        });
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+/* ==========================================================
+ *  Market share table (top 5 + selected, 2023/2024/2025)
+ * ========================================================== */
+function drawMarketShareTable(cohort) {
+  const tbl = document.getElementById('marketShareTable');
+  const yearsCols = [2023, 2024, 2025];
+  const sectorTotals = {};
+  for (const y of yearsCols) sectorTotals[y] = sum(cohort.companies.map(c => getCompanyYearData(c.jar_kodas, y).revenue));
+
+  const { top5, selectedExtras } = getTop5PlusSelected(cohort.companies, CURRENT_YEAR);
+  const pool = [...top5, ...selectedExtras];
+  const selKeys = new Set([...state.selectedCompanies.keys()]);
+
+  const header = `<thead><tr><th>Company</th>${yearsCols.map(y => `<th class="num">${y}</th>`).join('')}</tr></thead>`;
+  const rows = pool.map(x => {
+    const isSel = selKeys.has(x.c.jar_kodas);
+    const cells = yearsCols.map(y => {
+      const rev = getCompanyYearData(x.c.jar_kodas, y).revenue;
+      const tot = sectorTotals[y];
+      const pct = (rev != null && tot > 0) ? (rev/tot)*100 : null;
+      return `<td class="num">${pct==null ? '—' : pct.toFixed(1) + '%'}</td>`;
+    }).join('');
+    return `<tr class="${isSel ? 'selected-row' : ''}"><td title="${escapeHtml(x.c.name)}">${escapeHtml(shortName(x.c.name, 35))}</td>${cells}</tr>`;
+  }).join('');
+  tbl.innerHTML = header + `<tbody>${rows}</tbody>`;
+}
+
+/* ==========================================================
+ *  Bubble chart — X=EBT margin, Y=Revenue, top 5 + selected
+ * ========================================================== */
+function drawBubbleChart(cohort) {
+  destroyChart('bubbleChart');
+  const year = CURRENT_YEAR;
+  const { top5, selectedExtras } = getTop5PlusSelected(cohort.companies, year);
+  const pool = [...top5, ...selectedExtras];
+  if (!pool.length) return;
+
+  const selKeys = new Set([...state.selectedCompanies.keys()]);
+  const points = pool.map(x => {
+    const d = getCompanyYearDerived(x.c.jar_kodas, year);
+    return {
+      x: d.ebt_margin != null ? d.ebt_margin : 0,
+      y: d.revenue || 0,
+      r: 12,
+      name: x.c.name,
+      label: firstWord(x.c.name),
+      isSel: selKeys.has(x.c.jar_kodas)
+    };
+  });
+
+  const ctx = document.getElementById('bubbleChart').getContext('2d');
+  chartInstances['bubbleChart'] = new Chart(ctx, {
+    type: 'bubble',
+    data: {
+      datasets: [
+        {
+          label: 'Top 5',
+          data: points.filter(p => !p.isSel),
+          backgroundColor: 'rgba(167,122,0,.55)',
+          borderColor: '#A77A00',
+          borderWidth: 1.5
+        },
+        {
+          label: 'Selected',
+          data: points.filter(p => p.isSel),
+          backgroundColor: 'rgba(233,172,20,.70)',
+          borderColor: '#E9AC14',
+          borderWidth: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title: { display: true, text: 'EBT margin %' }, ticks: { callback: v => v + '%' } },
+        y: { title: { display: true, text: 'Revenue (€)' }, ticks: { callback: v => '€' + fmtEUR(v) } }
+      },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const p = ctx.raw;
+              return `${p.name}: €${fmtEUR(p.y)}, ${p.x.toFixed(1)}%`;
+            }
+          }
+        }
+      }
+    },
+    plugins: [{
+      id: 'bubbleLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        ctx.save();
+        ctx.font = '11px Calibri, sans-serif';
+        ctx.fillStyle = '#454132';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        chart.data.datasets.forEach((ds, dsi) => {
+          const meta = chart.getDatasetMeta(dsi);
+          meta.data.forEach((el, i) => {
+            const p = ds.data[i];
+            if (!p) return;
+            ctx.fillText(p.label, el.x, el.y - 14);
+          });
+        });
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+
+/* ==========================================================
+ *  Companies in sector table (top 20 with show more)
+ * ========================================================== */
+function renderCompaniesInSectorTable(cohort) {
+  const tbl = document.getElementById('companiesInSectorTable');
+  const yearsCols = [2023, 2024, 2025];
+
+  // Sort cohort by 2025 revenue desc
+  const rows = cohort.companies
+    .map(c => ({ c, rev2025: getCompanyYearData(c.jar_kodas, 2025).revenue || 0 }))
+    .sort((a,b) => b.rev2025 - a.rev2025);
+
+  const selKeys = new Set([...state.selectedCompanies.keys()]);
+  const limit = state.showAllInTable ? rows.length : Math.min(20, rows.length);
+
+  const header = `
+    <thead>
+      <tr>
+        <th class="checkbox-cell"></th>
+        <th>Company</th>
+        ${yearsCols.map(y => `<th class="num">Rev ${y}</th>`).join('')}
+        <th class="num">Growth 23→24</th>
+        <th class="num">Growth 24→25</th>
+        ${yearsCols.map(y => `<th class="num">EBT ${y}</th>`).join('')}
+        ${yearsCols.map(y => `<th class="num">EBT% ${y}</th>`).join('')}
+        ${yearsCols.map(y => `<th class="num">Rev/emp ${y}</th>`).join('')}
+        ${yearsCols.map(y => `<th class="num">Salary ${y}</th>`).join('')}
+      </tr>
+    </thead>`;
+
+  let body = '<tbody>';
+  for (let i = 0; i < limit; i++) {
+    const { c } = rows[i];
+    const isSel = selKeys.has(c.jar_kodas);
+    const revs = yearsCols.map(y => getCompanyYearData(c.jar_kodas, y).revenue);
+    const growth23_24 = yoyPct(revs[1], revs[0]);
+    const growth24_25 = yoyPct(revs[2], revs[1]);
+    const ebts = yearsCols.map(y => getCompanyYearData(c.jar_kodas, y).ebt);
+    const ebtMargs = yearsCols.map((y, idx) => (revs[idx] && revs[idx] > 0 && ebts[idx] != null) ? (ebts[idx]/revs[idx])*100 : null);
+    const rpes = yearsCols.map(y => getCompanyYearDerived(c.jar_kodas, y).rev_per_emp);
+    const sals = yearsCols.map(y => (state.sodra[c.jar_kodas] && state.sodra[c.jar_kodas][y]) ? state.sodra[c.jar_kodas][y].avg_salary : null);
+
+    body += `
+      <tr class="${isSel ? 'selected-row' : ''}">
+        <td class="checkbox-cell">
+          <input type="checkbox" ${isSel ? 'checked' : ''} onchange="toggleMsItem('company', ${JSON.stringify(c.jar_kodas).replace(/"/g,'&quot;')})">
+        </td>
+        <td title="${escapeHtml(c.name)}">${escapeHtml(shortName(c.name, 40))}</td>
+        ${revs.map(r => `<td class="num">${r==null ? '—' : fmtEUR(r)}</td>`).join('')}
+        <td class="num ${growth23_24==null ? '' : (growth23_24>=0 ? 'pct-up' : 'pct-down')}">${growth23_24==null ? '—' : fmtPctSigned(growth23_24)}</td>
+        <td class="num ${growth24_25==null ? '' : (growth24_25>=0 ? 'pct-up' : 'pct-down')}">${growth24_25==null ? '—' : fmtPctSigned(growth24_25)}</td>
+        ${ebts.map(e => `<td class="num">${e==null ? '—' : fmtEUR(e)}</td>`).join('')}
+        ${ebtMargs.map(m => `<td class="num">${m==null ? '—' : fmtPct(m)}</td>`).join('')}
+        ${rpes.map(r => `<td class="num">${r==null ? '—' : fmtEUR(r)}</td>`).join('')}
+        ${sals.map(s => `<td class="num">${s==null ? '—' : fmtEUR(s)}</td>`).join('')}
+      </tr>`;
+  }
+
+  if (!state.showAllInTable && rows.length > 20) {
+    body += `<tr class="show-more-row" onclick="state.showAllInTable=true; refreshUI()"><td colspan="16">Show all ${rows.length} companies ▼</td></tr>`;
+  } else if (state.showAllInTable && rows.length > 20) {
+    body += `<tr class="show-more-row" onclick="state.showAllInTable=false; refreshUI()"><td colspan="16">Show top 20 only ▲</td></tr>`;
+  }
+
+  body += '</tbody>';
+  tbl.innerHTML = header + body;
+}
+
+/* ==========================================================
+ *  Historical charts (sector + each selected company)
+ *  - Revenue: sum, EBT margin: weighted, Rev/emp: median, Salary: median
+ *  - Each line only over years with data
+ * ========================================================== */
+function computeSectorHistorical(companies) {
+  // returns { [year]: { total_rev, wtd_margin, median_rpe, median_sal } }
+  const out = {};
+  for (const y of YEARS) {
+    const agg = sectorTotalsByYear(companies, y);
+    out[y] = {
+      total_rev: agg.total_revenue || null,
+      wtd_margin: agg.weighted_ebt_margin,
+      median_rpe: agg.median_rev_per_emp,
+      median_sal: agg.median_salary
+    };
+    // Nullify if no data
+    if (agg.n_with_revenue === 0) {
+      out[y].total_rev = null;
+      out[y].wtd_margin = null;
+    }
+  }
+  return out;
+}
+
+function computeCompanyHistorical(jar) {
+  const out = {};
+  for (const y of YEARS) {
+    const d = getCompanyYearDerived(jar, y);
+    out[y] = {
+      revenue: d.revenue,
+      ebt_margin: d.ebt_margin,
+      rev_per_emp: d.rev_per_emp,
+      salary: d.salary
+    };
+  }
+  return out;
+}
+
+const COMPANY_COLORS = ['#AC6525','#E67C21','#AEA730','#E9D32A','#5C4308','#7E5A01','#D4AB42','#8C7010'];
+
+function drawHistoricalCharts(cohort) {
+  const sectorHist = computeSectorHistorical(cohort.companies);
+  // Selected companies that are IN the cohort
+  const selCompanies = [...state.selectedCompanies.values()].filter(c =>
+    cohort.companies.some(x => x.jar_kodas === c.jar_kodas)
+  );
+  const companyHists = selCompanies.map(c => ({ c, h: computeCompanyHistorical(c.jar_kodas) }));
+
+  drawHistLine('revHistChart', 'Revenue (€)',
+    sectorHist, companyHists, 'total_rev', 'revenue',
+    v => '€' + fmtEUR(v));
+
+  drawHistLine('marginHistChart', 'EBT margin %',
+    sectorHist, companyHists, 'wtd_margin', 'ebt_margin',
+    v => v.toFixed(1) + '%');
+
+  drawHistLine('rpeHistChart', 'Revenue per employee (€)',
+    sectorHist, companyHists, 'median_rpe', 'rev_per_emp',
+    v => '€' + fmtEUR(v));
+
+  drawHistLine('salHistChart', 'Avg salary (€/mo)',
+    sectorHist, companyHists, 'median_sal', 'salary',
+    v => '€' + fmtEUR(v));
+}
+
+function drawHistLine(canvasId, yLabel, sectorHist, companyHists, sectorKey, companyKey, tickFmt) {
+  destroyChart(canvasId);
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+
+  const labels = YEARS.map(String);
+  const sectorData = YEARS.map(y => sectorHist[y][sectorKey]);
+
+  const datasets = [{
+    label: 'Sector',
+    data: sectorData,
+    borderColor: '#454132',
+    backgroundColor: 'rgba(69,65,50,.08)',
+    borderWidth: 2.5,
+    pointRadius: 3,
+    tension: .2,
+    spanGaps: false
+  }];
+
+  companyHists.forEach((ch, i) => {
+    const color = COMPANY_COLORS[i % COMPANY_COLORS.length];
+    datasets.push({
+      label: shortName(ch.c.name, 24),
+      data: YEARS.map(y => ch.h[y][companyKey]),
+      borderColor: color,
+      backgroundColor: color + '22',
+      borderWidth: 2,
+      pointRadius: 2.5,
+      tension: .2,
+      spanGaps: false
+    });
+  });
+
+  chartInstances[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y==null ? '—' : tickFmt(ctx.parsed.y)}`
+          }
+        }
+      },
+      scales: {
+        y: { title: { display: true, text: yLabel }, ticks: { callback: tickFmt } }
+      }
+    }
+  });
+}
+
+
+/* ==========================================================
+ *  Company detail tabs
+ * ========================================================== */
+function renderCompanyTabs() {
+  const wrap = document.getElementById('companyTabPanels');
+  wrap.innerHTML = '';
+  const cohort = getCohort();
+  const sectorHist = computeSectorHistorical(cohort.companies);
+
+  for (const c of state.selectedCompanies.values()) {
+    const panelId = 'tab-company-' + c.jar_kodas;
+    const panel = document.createElement('div');
+    panel.className = 'tab-panel';
+    if (state.currentTab === 'company-' + c.jar_kodas) panel.classList.add('active');
+    panel.id = panelId;
+
+    // Summary table
+    const curY = getCompanyYearDerived(c.jar_kodas, CURRENT_YEAR);
+    const prevY = getCompanyYearDerived(c.jar_kodas, PREV_YEAR);
+    const revG = yoyPct(curY.revenue, prevY.revenue);
+
+    panel.innerHTML = `
+      <div class="overview-header">
+        <div class="title">${escapeHtml(c.name)}</div>
+        <div class="sector-names">${escapeHtml(c.evrk_name || c.evrk_code || '')} · JAR ${escapeHtml(c.jar_kodas)}</div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-label">Revenue ${CURRENT_YEAR}</div><div class="kpi-value">€${fmtEUR(curY.revenue)}</div><div class="kpi-change ${revG==null ? 'flat' : (revG>=0 ? 'up' : 'down')}">${revG==null ? '—' : fmtPctSigned(revG) + ' YoY'}</div></div>
+        <div class="kpi"><div class="kpi-label">EBT ${CURRENT_YEAR}</div><div class="kpi-value">€${fmtEUR(curY.ebt)}</div><div class="kpi-change flat">Margin: ${fmtPct(curY.ebt_margin)}</div></div>
+        <div class="kpi"><div class="kpi-label">Employees (avg)</div><div class="kpi-value">${curY.employees==null ? '—' : Math.round(curY.employees).toLocaleString()}</div><div class="kpi-change flat">Rev/emp: €${fmtEUR(curY.rev_per_emp)}</div></div>
+        <div class="kpi"><div class="kpi-label">Avg salary (€/mo)</div><div class="kpi-value">€${fmtEUR(curY.salary)}</div><div class="kpi-change flat">${CURRENT_YEAR}</div></div>
+      </div>
+
+      <h2 style="margin:18px 0 10px;font-size:15px;color:#111">Historical trends (2015–2025) — vs sector</h2>
+      <div class="chart-grid-2">
+        <div class="chart-box">
+          <h3>Revenue — ${escapeHtml(shortName(c.name,30))} vs sector total</h3>
+          <div class="chart-container"><canvas id="cRev_${c.jar_kodas}"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <h3>EBT margin % — ${escapeHtml(shortName(c.name,30))} vs sector weighted</h3>
+          <div class="chart-container"><canvas id="cMargin_${c.jar_kodas}"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <h3>Revenue per employee — ${escapeHtml(shortName(c.name,30))} vs sector median</h3>
+          <div class="chart-container"><canvas id="cRpe_${c.jar_kodas}"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <h3>Avg salary — ${escapeHtml(shortName(c.name,30))} vs sector median</h3>
+          <div class="chart-container"><canvas id="cSal_${c.jar_kodas}"></canvas></div>
+        </div>
+      </div>
+    `;
+    wrap.appendChild(panel);
+
+    // Draw 4 charts
+    const hist = computeCompanyHistorical(c.jar_kodas);
+    drawCompanyVsSectorLine('cRev_' + c.jar_kodas, 'Revenue (€)', sectorHist, hist, 'total_rev', 'revenue', v => '€' + fmtEUR(v));
+    drawCompanyVsSectorLine('cMargin_' + c.jar_kodas, 'EBT margin %', sectorHist, hist, 'wtd_margin', 'ebt_margin', v => v.toFixed(1) + '%');
+    drawCompanyVsSectorLine('cRpe_' + c.jar_kodas, 'Revenue / employee (€)', sectorHist, hist, 'median_rpe', 'rev_per_emp', v => '€' + fmtEUR(v));
+    drawCompanyVsSectorLine('cSal_' + c.jar_kodas, 'Avg salary (€/mo)', sectorHist, hist, 'median_sal', 'salary', v => '€' + fmtEUR(v));
+  }
+}
+
+function drawCompanyVsSectorLine(canvasId, yLabel, sectorHist, compHist, sectorKey, companyKey, tickFmt) {
+  destroyChart(canvasId);
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const labels = YEARS.map(String);
+  chartInstances[canvasId] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Sector',
+          data: YEARS.map(y => sectorHist[y][sectorKey]),
+          borderColor: '#454132', backgroundColor: 'rgba(69,65,50,.08)',
+          borderWidth: 2.5, pointRadius: 3, tension: .2, spanGaps: false
+        },
+        {
+          label: 'Company',
+          data: YEARS.map(y => compHist[y][companyKey]),
+          borderColor: '#A77A00', backgroundColor: 'rgba(167,122,0,.15)',
+          borderWidth: 2.5, pointRadius: 3, tension: .2, spanGaps: false
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 12, padding: 8 } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y==null ? '—' : tickFmt(ctx.parsed.y)}` } }
+      },
+      scales: { y: { title: { display: true, text: yLabel }, ticks: { callback: tickFmt } } }
+    }
+  });
+}
+
+/* ==========================================================
+ *  Top-level refresh
+ * ========================================================== */
+function refreshUI() {
+  destroyAllCharts();
+  rebuildTabs();
+  renderOverview();
+  renderCompanyTabs();
+}
+
+
+/* ==========================================================
+ *  Excel export — ExcelJS edition
+ *  Produces a branded .xlsx with:
+ *    - "Overview" sheet: KPIs, market share table, historical tables, chart images
+ *    - One sheet per selected company: KPIs, historical tables, chart images
+ *  Formatting:
+ *    #,##0        integers / currency amounts
+ *    0.0%         percentages (values stored as decimals, e.g. 0.12)
+ *  Styling: Confidentus palette applied to headers, totals, section titles
+ * ========================================================== */
+
+// Confidentus palette, ARGB for ExcelJS (alpha-first, no #)
+const EX = {
+  EARTH: 'FF454132',
+  EARTH_LIGHT: 'FF6A6552',
+  GOLD: 'FFA77A00',
+  GOLD_SOFT: 'FFE9AC14',
+  CREAM: 'FFFAF8F3',
+  BG_ZEBRA: 'FFF5F2E8',
+  BORDER: 'FFE5E1D5',
+  TEXT: 'FF2A2820',
+  WHITE: 'FFFFFFFF'
+};
+
+// Shared border styles
+const thinBorder = {
+  top:    { style: 'thin', color: { argb: EX.BORDER } },
+  bottom: { style: 'thin', color: { argb: EX.BORDER } },
+  left:   { style: 'thin', color: { argb: EX.BORDER } },
+  right:  { style: 'thin', color: { argb: EX.BORDER } }
+};
+
+async function exportExcel() {
+  const cohort = getCohort();
+  if (!cohort.companies.length) {
+    showStatus('Select sectors or companies first.', 'error');
+    return;
+  }
+
+  showStatus('Capturing charts…');
+  // Make sure we're on the Overview tab so Overview charts are captured in a rendered state.
+  // If we're on a company tab, we switch briefly: capture, then come back.
+  const originalTab = state.currentTab;
+  if (originalTab !== 'overview') {
+    switchTab('overview');
+    await new Promise(r => setTimeout(r, 350));  // allow chart layout
+  }
+  const overviewImages = captureAllOverviewCharts();
+
+  // Capture each company tab's charts
+  const companyImages = {};
+  for (const c of state.selectedCompanies.values()) {
+    switchTab('company-' + c.jar_kodas);
+    await new Promise(r => setTimeout(r, 350));
+    companyImages[c.jar_kodas] = captureCompanyCharts(c.jar_kodas);
+  }
+  // Restore original tab
+  switchTab(originalTab);
+
+  showStatus('Building Excel file…');
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Confidentus CompanyDB';
+  wb.created = new Date();
+
+  await buildOverviewSheet(wb, cohort, overviewImages);
+
+  for (const c of state.selectedCompanies.values()) {
+    await buildCompanySheet(wb, c, cohort, companyImages[c.jar_kodas] || {});
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const stamp = new Date().toISOString().slice(0, 10);
+  const fname = `Confidentus_Sector_${stamp}.xlsx`;
+  saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fname);
+  showStatus(`Exported ${fname}`, 'success');
+}
+
+function captureAllOverviewCharts() {
+  const out = {};
+  const ids = ['pieChart', 'bubbleChart', 'revHistChart', 'marginHistChart', 'rpeHistChart', 'salHistChart'];
+  for (const id of ids) {
+    const canvas = document.getElementById(id);
+    if (canvas && canvas.toDataURL) {
+      try { out[id] = canvas.toDataURL('image/png', 0.92); } catch(e) {}
+    }
+  }
+  return out;
+}
+
+function captureCompanyCharts(jar) {
+  const out = {};
+  const ids = ['cRev_' + jar, 'cMargin_' + jar, 'cRpe_' + jar, 'cSal_' + jar];
+  for (const id of ids) {
+    const canvas = document.getElementById(id);
+    if (canvas && canvas.toDataURL) {
+      try { out[id] = canvas.toDataURL('image/png', 0.92); } catch(e) {}
+    }
+  }
+  return out;
+}
+
+/* ----- Styling helpers ----- */
+function styleTitle(cell) {
+  cell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: EX.EARTH } };
+  cell.alignment = { vertical: 'middle' };
+}
+function styleSubtitle(cell) {
+  cell.font = { name: 'Calibri', size: 11, italic: true, color: { argb: EX.EARTH_LIGHT } };
+}
+function styleSectionHeader(cell) {
+  cell.font = { name: 'Calibri', size: 12, bold: true, color: { argb: EX.WHITE } };
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EX.EARTH } };
+  cell.alignment = { vertical: 'middle', horizontal: 'left' };
+  cell.border = {
+    ...thinBorder,
+    bottom: { style: 'medium', color: { argb: EX.GOLD } }
+  };
+}
+function styleTableHeader(cell) {
+  cell.font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: EX.WHITE } };
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EX.EARTH } };
+  cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+  cell.border = {
+    ...thinBorder,
+    bottom: { style: 'medium', color: { argb: EX.GOLD } }
+  };
+}
+function styleDataCell(cell) {
+  cell.font = { name: 'Calibri', size: 11, color: { argb: EX.TEXT } };
+  cell.border = thinBorder;
+}
+function styleNumberCell(cell, fmt) {
+  styleDataCell(cell);
+  cell.alignment = { horizontal: 'right' };
+  if (fmt) cell.numFmt = fmt;
+}
+function applyZebra(sheet, startRow, endRow, startCol, endCol) {
+  for (let r = startRow; r <= endRow; r++) {
+    if ((r - startRow) % 2 === 1) {
+      for (let c = startCol; c <= endCol; c++) {
+        const cell = sheet.getCell(r, c);
+        if (!cell.fill || !cell.fill.fgColor) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EX.BG_ZEBRA } };
+        }
+      }
+    }
+  }
+}
+
+/* ----- Helper: put a section header spanning N columns ----- */
+function addSectionHeader(sheet, text, nCols, mergeStart) {
+  const row = sheet.addRow([text]);
+  const rowNum = row.number;
+  const startCol = mergeStart || 1;
+  const endCol = startCol + nCols - 1;
+  sheet.mergeCells(rowNum, startCol, rowNum, endCol);
+  styleSectionHeader(sheet.getCell(rowNum, startCol));
+  row.height = 22;
+  return rowNum;
+}
+
+/* ----- Helper: add a horizontal table with header row + data rows -----
+ * headers: string[]
+ * rows:    array of arrays; numeric cells get fmt from colFormats[colIndex]
+ * colFormats: array same length as headers; value is '#,##0' or '0.0%' or null (text)
+ */
+function addTable(sheet, headers, rows, colFormats) {
+  const headerRow = sheet.addRow(headers);
+  const headerRowNum = headerRow.number;
+  headers.forEach((h, i) => {
+    styleTableHeader(sheet.getCell(headerRowNum, i + 1));
+  });
+  headerRow.height = 26;
+
+  const firstDataRow = headerRowNum + 1;
+  rows.forEach((r) => {
+    const row = sheet.addRow(r);
+    r.forEach((val, i) => {
+      const cell = sheet.getCell(row.number, i + 1);
+      if (colFormats && colFormats[i]) {
+        styleNumberCell(cell, colFormats[i]);
+      } else {
+        styleDataCell(cell);
+      }
+    });
+  });
+  const lastDataRow = firstDataRow + rows.length - 1;
+
+  if (rows.length > 0) {
+    applyZebra(sheet, firstDataRow, lastDataRow, 1, headers.length);
+  }
+  return { firstDataRow, lastDataRow };
+}
+
+/* ----- Add an image to the sheet from a dataURL ----- */
+async function addImageToSheet(wb, sheet, dataURL, anchorRow, anchorCol, widthCols, heightRows) {
+  if (!dataURL) return;
+  try {
+    const imgId = wb.addImage({ base64: dataURL, extension: 'png' });
+    sheet.addImage(imgId, {
+      tl: { col: anchorCol - 1, row: anchorRow - 1 },   // ExcelJS uses 0-based here
+      ext: { width: widthCols * 80, height: heightRows * 18 }   // rough px mapping
+    });
+  } catch(e) { console.warn('Image embed failed:', e); }
+}
+
+/* ----- Convert dataURL size to work out actual pixel dimensions ----- */
+function imageDimsFromDataURL(dataURL) {
+  // We know Chart.js canvases are typically ~width × 280/340 px. Return sensible defaults.
+  // Safer: we'll use fixed dimensions below.
+  return { width: 700, height: 340 };
+}
+
+/* ==========================================================
+ *  Overview sheet
+ * ========================================================== */
+async function buildOverviewSheet(wb, cohort, images) {
+  const sheet = wb.addWorksheet('Overview', {
+    properties: { defaultRowHeight: 18 },
+    views: [{ showGridLines: false }]
+  });
+
+  // Column widths
+  sheet.columns = [
+    { width: 42 },
+    { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 },
+    { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 },
+    { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 },
+    { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 18 }
+  ];
+
+  // --- Title block ---
+  const titleRow = sheet.addRow(['SECTOR OVERVIEW']);
+  sheet.mergeCells(titleRow.number, 1, titleRow.number, 6);
+  styleTitle(sheet.getCell(titleRow.number, 1));
+  titleRow.height = 26;
+
+  const subRow = sheet.addRow([cohort.sectorNames.join(' · ')]);
+  sheet.mergeCells(subRow.number, 1, subRow.number, 10);
+  styleSubtitle(sheet.getCell(subRow.number, 1));
+  subRow.height = 18;
+
+  if (state.selectedCompanies.size) {
+    const selRow = sheet.addRow(['Selected companies:', [...state.selectedCompanies.values()].map(c => c.name).join(' · ')]);
+    sheet.mergeCells(selRow.number, 2, selRow.number, 10);
+    sheet.getCell(selRow.number, 1).font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: EX.GOLD } };
+    sheet.getCell(selRow.number, 2).font = { name: 'Calibri', size: 10.5, color: { argb: EX.EARTH } };
+  }
+  sheet.addRow([]);
+
+  // --- KPIs ---
+  const cur = sectorTotalsByYear(cohort.companies, CURRENT_YEAR);
+  const prev = sectorTotalsByYear(cohort.companies, PREV_YEAR);
+
+  addSectionHeader(sheet, 'KEY METRICS', 4);
+  addTable(sheet,
+    ['Metric', `${CURRENT_YEAR}`, `${PREV_YEAR}`, 'YoY %'],
+    [
+      ['Companies in sector', cur.n_companies, prev.n_companies, null],
+      ['Total revenue (€)', cur.total_revenue, prev.total_revenue, pctOrNull(yoyPct(cur.total_revenue, prev.total_revenue))],
+      ['Total EBT (€)', cur.total_ebt, prev.total_ebt, pctOrNull(yoyPct(cur.total_ebt, prev.total_ebt))],
+      ['EBT margin % (weighted)', frac(cur.weighted_ebt_margin), frac(prev.weighted_ebt_margin), null],
+      ['Median revenue / employee (€)', cur.median_rev_per_emp, prev.median_rev_per_emp, pctOrNull(yoyPct(cur.median_rev_per_emp, prev.median_rev_per_emp))],
+      ['Median salary (€/mo)', cur.median_salary, prev.median_salary, pctOrNull(yoyPct(cur.median_salary, prev.median_salary))]
+    ],
+    [null, '#,##0', '#,##0', '0.0%']
+  );
+  // Special formatting fix: the EBT margin % row uses percent in cols 2 & 3 too
+  const kpiRows = sheet.rowCount; // last data row of KPI table
+  const ebtMarginRow = kpiRows - 2;  // it's the 4th data row of 6 — row kpiRows - 2
+  // We can't rely on arithmetic precisely; instead, find the row whose col 1 starts with "EBT margin %"
+  for (let r = 1; r <= sheet.rowCount; r++) {
+    const v = sheet.getCell(r, 1).value;
+    if (typeof v === 'string' && v.startsWith('EBT margin')) {
+      sheet.getCell(r, 2).numFmt = '0.0%';
+      sheet.getCell(r, 3).numFmt = '0.0%';
+      break;
+    }
+  }
+  sheet.addRow([]);
+
+  // --- Market share table ---
+  addSectionHeader(sheet, 'MARKET SHARE — Top 5 + selected companies', 7);
+  const { top5, selectedExtras } = getTop5PlusSelected(cohort.companies, CURRENT_YEAR);
+  const pool = [...top5, ...selectedExtras];
+  const sectorTotals3y = {};
+  for (const y of [2023, 2024, 2025]) {
+    sectorTotals3y[y] = sum(cohort.companies.map(c => getCompanyYearData(c.jar_kodas, y).revenue));
+  }
+  const selKeys = new Set([...state.selectedCompanies.keys()]);
+
+  const msRows = pool.map(x => {
+    const revs = [2023,2024,2025].map(y => getCompanyYearData(x.c.jar_kodas, y).revenue);
+    const shares = revs.map((r, i) => {
+      const y = [2023,2024,2025][i];
+      return (r != null && sectorTotals3y[y] > 0) ? r / sectorTotals3y[y] : null;
+    });
+    return [x.c.name, ...revs, ...shares];
+  });
+  const msTable = addTable(sheet,
+    ['Company', 'Revenue 2023', 'Revenue 2024', 'Revenue 2025', 'Share 2023', 'Share 2024', 'Share 2025'],
+    msRows,
+    [null, '#,##0', '#,##0', '#,##0', '0.0%', '0.0%', '0.0%']
+  );
+  // Bold rows that correspond to a selected company
+  pool.forEach((x, i) => {
+    if (selKeys.has(x.c.jar_kodas)) {
+      const rowNum = msTable.firstDataRow + i;
+      for (let c = 1; c <= 7; c++) {
+        const cell = sheet.getCell(rowNum, c);
+        cell.font = { ...(cell.font || { name: 'Calibri', size: 11 }), bold: true, color: { argb: EX.GOLD } };
+      }
+    }
+  });
+  sheet.addRow([]);
+
+  // --- Historical data tables ---
+  const selInCohort = [...state.selectedCompanies.values()].filter(c => cohort.companies.some(x => x.jar_kodas === c.jar_kodas));
+
+  addSectionHeader(sheet, 'HISTORICAL — Revenue (€, sum per year)', 2 + selInCohort.length);
+  addTable(sheet,
+    ['Year', 'Sector total', ...selInCohort.map(c => c.name)],
+    YEARS.map(y => {
+      const row = [y, sectorTotalsByYear(cohort.companies, y).total_revenue];
+      for (const c of selInCohort) row.push(getCompanyYearData(c.jar_kodas, y).revenue);
+      return row;
+    }),
+    [null, '#,##0', ...selInCohort.map(() => '#,##0')]
+  );
+  sheet.addRow([]);
+
+  addSectionHeader(sheet, 'HISTORICAL — EBT margin % (sector weighted / company individual)', 2 + selInCohort.length);
+  addTable(sheet,
+    ['Year', 'Sector weighted', ...selInCohort.map(c => c.name)],
+    YEARS.map(y => {
+      const sAgg = sectorTotalsByYear(cohort.companies, y);
+      const row = [y, frac(sAgg.weighted_ebt_margin)];
+      for (const c of selInCohort) {
+        row.push(frac(getCompanyYearDerived(c.jar_kodas, y).ebt_margin));
+      }
+      return row;
+    }),
+    [null, '0.0%', ...selInCohort.map(() => '0.0%')]
+  );
+  sheet.addRow([]);
+
+  addSectionHeader(sheet, 'HISTORICAL — Revenue per employee (€, sector median)', 2 + selInCohort.length);
+  addTable(sheet,
+    ['Year', 'Sector median', ...selInCohort.map(c => c.name)],
+    YEARS.map(y => {
+      const sAgg = sectorTotalsByYear(cohort.companies, y);
+      const row = [y, sAgg.median_rev_per_emp];
+      for (const c of selInCohort) row.push(getCompanyYearDerived(c.jar_kodas, y).rev_per_emp);
+      return row;
+    }),
+    [null, '#,##0', ...selInCohort.map(() => '#,##0')]
+  );
+  sheet.addRow([]);
+
+  addSectionHeader(sheet, 'HISTORICAL — Average salary (€/month, sector median)', 2 + selInCohort.length);
+  addTable(sheet,
+    ['Year', 'Sector median', ...selInCohort.map(c => c.name)],
+    YEARS.map(y => {
+      const sAgg = sectorTotalsByYear(cohort.companies, y);
+      const row = [y, sAgg.median_salary];
+      for (const c of selInCohort) {
+        const s = state.sodra[c.jar_kodas] && state.sodra[c.jar_kodas][y] ? state.sodra[c.jar_kodas][y].avg_salary : null;
+        row.push(s);
+      }
+      return row;
+    }),
+    [null, '#,##0', ...selInCohort.map(() => '#,##0')]
+  );
+  sheet.addRow([]);
+
+  // --- Companies in sector (full list) ---
+  addSectionHeader(sheet, 'COMPANIES IN SECTOR — full list, sorted by 2025 revenue', 18);
+  const sorted = cohort.companies
+    .map(c => ({ c, rev: getCompanyYearData(c.jar_kodas, 2025).revenue || 0 }))
+    .sort((a, b) => b.rev - a.rev);
+  const cisRows = sorted.map(({ c }) => {
+    const revs = [2023,2024,2025].map(y => getCompanyYearData(c.jar_kodas, y).revenue);
+    const g1 = yoyPct(revs[1], revs[0]);
+    const g2 = yoyPct(revs[2], revs[1]);
+    const ebts = [2023,2024,2025].map(y => getCompanyYearData(c.jar_kodas, y).ebt);
+    const margs = [2023,2024,2025].map((y, i) => (revs[i] && revs[i] > 0 && ebts[i] != null) ? ebts[i] / revs[i] : null);
+    const rpes = [2023,2024,2025].map(y => getCompanyYearDerived(c.jar_kodas, y).rev_per_emp);
+    const sals = [2023,2024,2025].map(y => state.sodra[c.jar_kodas] && state.sodra[c.jar_kodas][y] ? state.sodra[c.jar_kodas][y].avg_salary : null);
+    return [
+      c.name,
+      ...revs,
+      g1 == null ? null : g1 / 100,
+      g2 == null ? null : g2 / 100,
+      ...ebts,
+      ...margs,
+      ...rpes,
+      ...sals
+    ];
+  });
+  const cisTable = addTable(sheet,
+    ['Company', 'Rev 2023', 'Rev 2024', 'Rev 2025', 'Growth 23→24', 'Growth 24→25',
+     'EBT 2023', 'EBT 2024', 'EBT 2025', 'EBT % 2023', 'EBT % 2024', 'EBT % 2025',
+     'Rev/emp 2023', 'Rev/emp 2024', 'Rev/emp 2025', 'Salary 2023', 'Salary 2024', 'Salary 2025'],
+    cisRows,
+    [null, '#,##0', '#,##0', '#,##0', '0.0%', '0.0%',
+     '#,##0', '#,##0', '#,##0', '0.0%', '0.0%', '0.0%',
+     '#,##0', '#,##0', '#,##0', '#,##0', '#,##0', '#,##0']
+  );
+  // Bold selected-company rows
+  sorted.forEach(({ c }, i) => {
+    if (selKeys.has(c.jar_kodas)) {
+      const rowNum = cisTable.firstDataRow + i;
+      for (let col = 1; col <= 18; col++) {
+        const cell = sheet.getCell(rowNum, col);
+        cell.font = { ...(cell.font || { name: 'Calibri', size: 11 }), bold: true, color: { argb: EX.GOLD } };
+      }
+    }
+  });
+  sheet.addRow([]);
+  sheet.addRow([]);
+
+  // --- Chart images ---
+  addSectionHeader(sheet, 'CHARTS', 8);
+  sheet.addRow([]);  // spacer
+
+  const chartMeta = [
+    { id: 'pieChart', title: 'Market share — Top 5 (2025)' },
+    { id: 'bubbleChart', title: 'Top 5 + selected — EBT margin vs Revenue (2025)' },
+    { id: 'revHistChart', title: 'Revenue history' },
+    { id: 'marginHistChart', title: 'EBT margin history' },
+    { id: 'rpeHistChart', title: 'Revenue per employee history' },
+    { id: 'salHistChart', title: 'Salary history' }
+  ];
+  for (const meta of chartMeta) {
+    if (!images[meta.id]) continue;
+    const labelRow = sheet.addRow([meta.title]);
+    sheet.mergeCells(labelRow.number, 1, labelRow.number, 8);
+    sheet.getCell(labelRow.number, 1).font = { name: 'Calibri', size: 12, bold: true, color: { argb: EX.EARTH } };
+    labelRow.height = 20;
+    // Leave space for image (20 rows x 8 cols ≈ 400px tall)
+    const imgAnchorRow = sheet.rowCount + 1;
+    for (let i = 0; i < 20; i++) sheet.addRow([]);
+    await addImageToSheet(wb, sheet, images[meta.id], imgAnchorRow, 1, 8, 20);
+    sheet.addRow([]);
+  }
+}
+
+/* ==========================================================
+ *  Per-company sheet
+ * ========================================================== */
+async function buildCompanySheet(wb, c, cohort, images) {
+  const sheetName = excelSheetName(c.name);
+  const sheet = wb.addWorksheet(sheetName, {
+    properties: { defaultRowHeight: 18 },
+    views: [{ showGridLines: false }]
+  });
+  sheet.columns = [
+    { width: 32 }, { width: 20 }, { width: 20 }, { width: 20 }
+  ];
+
+  // Title
+  const titleRow = sheet.addRow([c.name]);
+  sheet.mergeCells(titleRow.number, 1, titleRow.number, 4);
+  styleTitle(sheet.getCell(titleRow.number, 1));
+  titleRow.height = 26;
+
+  const subRow = sheet.addRow([c.evrk_name || c.evrk_code || '']);
+  sheet.mergeCells(subRow.number, 1, subRow.number, 4);
+  styleSubtitle(sheet.getCell(subRow.number, 1));
+
+  const jarRow = sheet.addRow(['JAR code:', c.jar_kodas]);
+  sheet.getCell(jarRow.number, 1).font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: EX.GOLD } };
+  sheet.getCell(jarRow.number, 2).font = { name: 'Calibri', size: 10.5, color: { argb: EX.EARTH } };
+  sheet.addRow([]);
+
+  // KPIs
+  const cur = getCompanyYearDerived(c.jar_kodas, CURRENT_YEAR);
+  const prev = getCompanyYearDerived(c.jar_kodas, PREV_YEAR);
+
+  addSectionHeader(sheet, 'KEY METRICS', 4);
+  addTable(sheet,
+    ['Metric', `${CURRENT_YEAR}`, `${PREV_YEAR}`, 'YoY %'],
+    [
+      ['Revenue (€)', cur.revenue, prev.revenue, pctOrNull(yoyPct(cur.revenue, prev.revenue))],
+      ['EBT (€)', cur.ebt, prev.ebt, pctOrNull(yoyPct(cur.ebt, prev.ebt))],
+      ['EBT margin %', frac(cur.ebt_margin), frac(prev.ebt_margin), null],
+      ['Employees (avg)', cur.employees, prev.employees, pctOrNull(yoyPct(cur.employees, prev.employees))],
+      ['Revenue / employee (€)', cur.rev_per_emp, prev.rev_per_emp, pctOrNull(yoyPct(cur.rev_per_emp, prev.rev_per_emp))],
+      ['Avg salary (€/mo)', cur.salary, prev.salary, pctOrNull(yoyPct(cur.salary, prev.salary))]
+    ],
+    [null, '#,##0', '#,##0', '0.0%']
+  );
+  // Fix EBT margin % row
+  for (let r = 1; r <= sheet.rowCount; r++) {
+    const v = sheet.getCell(r, 1).value;
+    if (typeof v === 'string' && v.startsWith('EBT margin')) {
+      sheet.getCell(r, 2).numFmt = '0.0%';
+      sheet.getCell(r, 3).numFmt = '0.0%';
+      break;
+    }
+  }
+  sheet.addRow([]);
+
+  // Historical
+  addSectionHeader(sheet, 'HISTORICAL — Revenue (€)', 3);
+  addTable(sheet,
+    ['Year', 'Company', 'Sector total'],
+    YEARS.map(y => [y, getCompanyYearData(c.jar_kodas, y).revenue, sectorTotalsByYear(cohort.companies, y).total_revenue]),
+    [null, '#,##0', '#,##0']
+  );
+  sheet.addRow([]);
+
+  addSectionHeader(sheet, 'HISTORICAL — EBT margin %', 3);
+  addTable(sheet,
+    ['Year', 'Company', 'Sector weighted'],
+    YEARS.map(y => {
+      const sAgg = sectorTotalsByYear(cohort.companies, y);
+      return [y, frac(getCompanyYearDerived(c.jar_kodas, y).ebt_margin), frac(sAgg.weighted_ebt_margin)];
+    }),
+    [null, '0.0%', '0.0%']
+  );
+  sheet.addRow([]);
+
+  addSectionHeader(sheet, 'HISTORICAL — Revenue per employee (€)', 3);
+  addTable(sheet,
+    ['Year', 'Company', 'Sector median'],
+    YEARS.map(y => [y, getCompanyYearDerived(c.jar_kodas, y).rev_per_emp, sectorTotalsByYear(cohort.companies, y).median_rev_per_emp]),
+    [null, '#,##0', '#,##0']
+  );
+  sheet.addRow([]);
+
+  addSectionHeader(sheet, 'HISTORICAL — Average salary (€/month)', 3);
+  addTable(sheet,
+    ['Year', 'Company', 'Sector median'],
+    YEARS.map(y => {
+      const s = state.sodra[c.jar_kodas] && state.sodra[c.jar_kodas][y] ? state.sodra[c.jar_kodas][y].avg_salary : null;
+      return [y, s, sectorTotalsByYear(cohort.companies, y).median_salary];
+    }),
+    [null, '#,##0', '#,##0']
+  );
+  sheet.addRow([]);
+  sheet.addRow([]);
+
+  // Charts
+  addSectionHeader(sheet, 'CHARTS', 4);
+  sheet.addRow([]);
+  const chartList = [
+    { id: 'cRev_' + c.jar_kodas, title: 'Revenue — company vs sector' },
+    { id: 'cMargin_' + c.jar_kodas, title: 'EBT margin — company vs sector' },
+    { id: 'cRpe_' + c.jar_kodas, title: 'Revenue per employee — company vs sector' },
+    { id: 'cSal_' + c.jar_kodas, title: 'Salary — company vs sector' }
+  ];
+  for (const meta of chartList) {
+    if (!images[meta.id]) continue;
+    const labelRow = sheet.addRow([meta.title]);
+    sheet.mergeCells(labelRow.number, 1, labelRow.number, 4);
+    sheet.getCell(labelRow.number, 1).font = { name: 'Calibri', size: 12, bold: true, color: { argb: EX.EARTH } };
+    labelRow.height = 20;
+    const imgAnchorRow = sheet.rowCount + 1;
+    for (let i = 0; i < 18; i++) sheet.addRow([]);
+    await addImageToSheet(wb, sheet, images[meta.id], imgAnchorRow, 1, 8, 18);
+    sheet.addRow([]);
+  }
+}
+
+/* ----- misc helpers ----- */
+// Convert a percentage value (e.g. 12.3 meaning 12.3%) to a decimal fraction (0.123)
+// suitable for storing in a cell formatted as 0.0%
+function frac(pct) {
+  if (pct == null || isNaN(pct)) return null;
+  return pct / 100;
+}
+// YoY percentages come from yoyPct() already as pct (e.g. 12.3), we want 0.123
+function pctOrNull(pct) {
+  if (pct == null || isNaN(pct)) return null;
+  return pct / 100;
+}
+
+function excelSheetName(name) {
+  if (!name) return 'Sheet';
+  let n = name.replace(/[„"""'']/g, '').trim();
+  const legalForms = ['UAB', 'AB', 'MB', 'VšĮ', 'VŠĮ', 'IĮ', 'TŪB', 'KŪB'];
+  for (const lf of legalForms) {
+    const r = new RegExp('^' + lf + '\\s+', 'i');
+    if (r.test(n)) { n = n.replace(r, ''); break; }
+  }
+  n = n.replace(/[:\\\/\?\*\[\]]/g, '-');
+  if (n.length > 31) n = n.slice(0, 31);
+  return n || 'Sheet';
+}
+
+/* ==========================================================
+ *  Boot
+ * ========================================================== */
+async function boot() {
+  try {
+    const result = await loadAllData();
+    hideLoading();
+    renderTags();
+    refreshUI();
+    if (result.fromCache) {
+      showStatus('Loaded from cache. Clear cache to refresh.', 'success');
+    } else {
+      showStatus('Database loaded.', 'success');
+    }
+  } catch (e) {
+    console.error(e);
+    hideLoading();
+    showStatus('Failed to load: ' + e.message, 'error');
+  }
+}
+
+// Expose a few helpers for dev
+window.clearCacheAndReload = () => { clearCache(); location.reload(); };
+
+document.addEventListener('DOMContentLoaded', boot);
+
+</script>
+</body>
+</html>
