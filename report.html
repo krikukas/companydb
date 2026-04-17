@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CompanyDB — Report Generator</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #222632;
+  --border: #2d3140;
+  --text: #e4e6ed;
+  --text2: #8b90a0;
+  --accent: #4f8ff7;
+  --accent2: #3a6fd8;
+  --green: #34d399;
+  --red: #f87171;
+  --yellow: #fbbf24;
+  --highlight: rgba(79,143,247,0.08);
+  --highlight-row: rgba(251,191,36,0.10);
+  --radius: 10px;
+  --font: 'DM Sans', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html { font-size:14px; }
+body { font-family:var(--font); background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--text2); }
+
+/* Header */
+.header { padding:24px 32px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+.header h1 { font-size:1.5rem; font-weight:700; letter-spacing:-0.02em; }
+.header h1 span { color:var(--accent); }
+.header .subtitle { color:var(--text2); font-size:0.85rem; }
+
+/* Input area */
+.input-area { padding:24px 32px; border-bottom:1px solid var(--border); background:var(--surface); }
+.input-row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+.input-group { display:flex; flex-direction:column; gap:6px; flex:1; min-width:280px; }
+.input-group label { font-size:0.8rem; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.05em; }
+.input-group input {
+  padding:10px 14px; border-radius:var(--radius); border:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-family:var(--mono); font-size:0.9rem;
+  outline:none; transition:border-color 0.2s;
+}
+.input-group input:focus { border-color:var(--accent); }
+.input-group input::placeholder { color:var(--text2); opacity:0.5; }
+.hint { font-size:0.75rem; color:var(--text2); margin-top:4px; }
+
+button {
+  padding:10px 22px; border-radius:var(--radius); border:none; cursor:pointer;
+  font-family:var(--font); font-size:0.85rem; font-weight:600;
+  transition:all 0.2s;
+}
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:var(--accent2); transform:translateY(-1px); }
+.btn-primary:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+.btn-export { background:var(--green); color:#111; }
+.btn-export:hover { background:#2bc48a; transform:translateY(-1px); }
+.btn-export:disabled { opacity:0.3; cursor:not-allowed; transform:none; }
+
+/* Status */
+.status { padding:12px 32px; font-size:0.85rem; color:var(--text2); min-height:40px; display:flex; align-items:center; gap:8px; }
+.status .spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.status.error { color:var(--red); }
+
+/* Report container */
+.report { padding:24px 32px 60px; }
+
+/* Company block */
+.company-block { margin-bottom:48px; }
+.company-banner {
+  background:linear-gradient(135deg, #1a365d 0%, #1e4a8a 100%);
+  padding:16px 24px; border-radius:var(--radius) var(--radius) 0 0;
+  font-size:1.2rem; font-weight:700; letter-spacing:-0.01em;
+}
+.company-banner .jar { font-family:var(--mono); font-weight:400; font-size:0.85rem; color:var(--text2); margin-left:12px; }
+
+/* Section header */
+.section-head {
+  background:var(--accent); color:#fff; padding:8px 16px; font-size:0.85rem;
+  font-weight:600; letter-spacing:0.02em; margin-top:16px;
+}
+
+/* Profile table */
+.profile-table { width:100%; border-collapse:collapse; }
+.profile-table td { padding:5px 12px; border:1px solid var(--border); font-size:0.85rem; }
+.profile-table td:first-child { background:var(--surface2); font-weight:600; width:220px; color:var(--text2); }
+
+/* Data tables */
+.data-table { width:100%; border-collapse:collapse; overflow-x:auto; display:block; }
+.data-table thead th {
+  position:sticky; top:0; background:var(--surface2); color:var(--accent);
+  padding:6px 10px; font-size:0.78rem; font-weight:600; text-transform:uppercase;
+  letter-spacing:0.03em; border:1px solid var(--border); white-space:nowrap;
+}
+.data-table tbody td {
+  padding:5px 10px; border:1px solid var(--border); font-size:0.82rem;
+  font-family:var(--mono); white-space:nowrap;
+}
+.data-table tbody td:first-child { font-family:var(--font); font-weight:500; }
+.data-table tbody td.num { text-align:right; }
+.data-table tbody td.pct { text-align:right; color:var(--text2); }
+.data-table tbody td.pct.pos { color:var(--green); }
+.data-table tbody td.pct.neg { color:var(--red); }
+
+/* Peer highlight */
+.data-table tbody tr.highlight td { background:var(--highlight-row); font-weight:600; }
+
+/* Responsive */
+@media (max-width:768px) {
+  .header, .input-area, .status, .report { padding-left:16px; padding-right:16px; }
+  .input-row { flex-direction:column; }
+  .input-group { min-width:100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Company<span>DB</span> Report</h1>
+    <div class="subtitle">Lithuanian company financial analysis — enter JAR codes to generate reports</div>
+  </div>
+</div>
+
+<div class="input-area">
+  <div class="input-row">
+    <div class="input-group">
+      <label>JAR codes</label>
+      <input type="text" id="jarInput" placeholder="e.g. 302334521, 300104144, 125458657" autofocus>
+      <div class="hint">Separate multiple codes with commas, spaces, or new lines</div>
+    </div>
+    <button class="btn-primary" id="btnGenerate" onclick="generate()">Generate Report</button>
+    <button class="btn-export" id="btnExport" onclick="exportExcel()" disabled>Download Excel</button>
+  </div>
+</div>
+
+<div class="status" id="status"></div>
+<div class="report" id="report"></div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────
+const SB_URL = 'https://fxapkoylegdibrhsajbo.supabase.co';
+const SB_KEY = 'sb_publishable_gZir2IvzDxdf39kOzAmVGQ_PKK4pKdA';
+const SB_HEADERS = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
+const PAGE = 1000;
+const PEER_YEARS = [2021,2022,2023,2024,2025];
+const PEER_LIMIT = 20;
+const RANK_YEAR = 2024;
+
+// Global report data for Excel export
+let reportData = [];
+
+// ── Supabase helpers ────────────────────────────────────────────────────
+async function sbGet(table, params='') {
+  let all=[], offset=0;
+  while(true) {
+    const sep = params ? '&' : '';
+    const url = `${SB_URL}/rest/v1/${table}?${params}${sep}limit=${PAGE}&offset=${offset}`;
+    const r = await fetch(url, {headers:SB_HEADERS});
+    if(!r.ok) throw new Error(`${r.status} on ${table}`);
+    const rows = await r.json();
+    if(!rows.length) break;
+    all.push(...rows);
+    if(rows.length < PAGE) break;
+    offset += PAGE;
+  }
+  return all;
+}
+
+async function fetchCompany(jar) {
+  const r = await sbGet('companies', `jar_kodas=eq.${jar}`);
+  return r[0] || null;
+}
+async function fetchFinancials(jar) {
+  return sbGet('financials', `jar_kodas=eq.${jar}&order=fin_year.asc`);
+}
+async function fetchSodra(jar) {
+  return sbGet('sodra_workforce', `jar_kodas=eq.${jar}&order=period_year.desc,period_month.desc`);
+}
+async function fetchSectorCompanies(evrk) {
+  if(!evrk) return [];
+  return sbGet('companies', `evrk_code=eq.${encodeURIComponent(evrk)}`);
+}
+
+async function fetchFinBulk(jars, years) {
+  const out = {};
+  jars.forEach(j => out[j]={});
+  const yf = `fin_year=in.(${years.join(',')})`;
+  for(let i=0; i<jars.length; i+=80) {
+    const chunk = jars.slice(i,i+80);
+    const cf = `jar_kodas=in.(${chunk.join(',')})`;
+    const rows = await sbGet('financials', `${cf}&${yf}`);
+    rows.forEach(r => { if(!out[r.jar_kodas]) out[r.jar_kodas]={}; out[r.jar_kodas][r.fin_year]=r; });
+  }
+  return out;
+}
+
+async function fetchSodraBulk(jars, years) {
+  const out = {};
+  jars.forEach(j => { out[j]={}; years.forEach(y => out[j][y]=[]); });
+  const yf = `period_year=in.(${years.join(',')})`;
+  for(let i=0; i<jars.length; i+=80) {
+    const chunk = jars.slice(i,i+80);
+    const cf = `jar_kodas=in.(${chunk.join(',')})`;
+    const rows = await sbGet('sodra_workforce', `${cf}&${yf}`);
+    rows.forEach(r => {
+      if(!out[r.jar_kodas]) out[r.jar_kodas]={};
+      if(!out[r.jar_kodas][r.period_year]) out[r.jar_kodas][r.period_year]=[];
+      out[r.jar_kodas][r.period_year].push(r);
+    });
+  }
+  return out;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+const LEGAL = ['UAB','AB','MB','VsI','ZUB','KUB','TUB','VI','SI','II'];
+function stripLegal(name) {
+  if(!name) return '(unknown)';
+  let s = name.replace(/["\u201c\u201d\u201e]/g,'').trim();
+  for(const f of LEGAL) {
+    s = s.replace(new RegExp(`^\\s*${f}\\s+`,'i'),'').replace(new RegExp(`[,\\s]+${f}\\s*$`,'i'),'');
+  }
+  return s.trim() || name;
+}
+function firstName(name) { return stripLegal(name).split(/[\s,]+/)[0]; }
+function fmtNum(v) { if(v==null) return '-'; return Number(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
+function fmtDec(v) { if(v==null) return '-'; return Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtPct(v) { if(v==null) return '-'; return (v*100).toFixed(1)+'%'; }
+function safeRatio(a,b) { if(a==null||b==null||b==0) return null; return a/b; }
+function pctClass(v) { if(v==null) return 'pct'; return v>0?'pct pos':v<0?'pct neg':'pct'; }
+
+function setStatus(msg, isError=false, loading=false) {
+  const el = document.getElementById('status');
+  el.className = 'status' + (isError?' error':'');
+  el.innerHTML = (loading?'<div class="spinner"></div>':'') + msg;
+}
+
+function parseCodes(input) {
+  return input.split(/[\s,;]+/).map(s=>s.trim()).filter(s=>s && /^\d+$/.test(s));
+}
+
+// ── Financial row definitions (matches Python script) ───────────────────
+const FIN_ROWS = [
+  {field:'revenue',      label:'Revenue (EUR)',          type:'value',   fmt:fmtNum, cls:'num'},
+  {field:'revenue_growth',label:'Revenue Growth',        type:'growth',  fmt:fmtPct, cls:'pct'},
+  {field:'ebt',          label:'EBT (EUR)',              type:'value',   fmt:fmtNum, cls:'num'},
+  {field:'ebt_margin',   label:'EBT Margin',             type:'margin_ebt', fmt:fmtPct, cls:'pct'},
+  {field:'net_profit',   label:'Net Profit (EUR)',       type:'value',   fmt:fmtNum, cls:'num'},
+  {field:'net_margin',   label:'Net Profit Margin',      type:'margin_net', fmt:fmtPct, cls:'pct'},
+  {field:'long_term_assets',label:'Long-term Assets (EUR)',type:'value', fmt:fmtNum, cls:'num'},
+  {field:'short_term_assets',label:'Short-term Assets (EUR)',type:'value',fmt:fmtNum, cls:'num'},
+  {field:'total_assets', label:'Total Assets (EUR)',     type:'value',   fmt:fmtNum, cls:'num'},
+  {field:'equity',       label:'Equity (EUR)',           type:'value',   fmt:fmtNum, cls:'num'},
+  {field:'total_liabilities',label:'Total Liabilities (EUR)',type:'value',fmt:fmtNum, cls:'num'},
+];
+
+const PEER_GROUPS = [
+  {label:'Revenue',         key:'revenue',    fmt:fmtNum, cls:'num'},
+  {label:'EBT',             key:'ebt',        fmt:fmtNum, cls:'num'},
+  {label:'EBT Margin',      key:'ebt_margin', fmt:fmtPct, cls:'pct'},
+  {label:'Net Profit Margin',key:'net_margin',fmt:fmtPct, cls:'pct'},
+  {label:'Revenue Growth',  key:'rev_growth', fmt:fmtPct, cls:'pct'},
+  {label:'Employees',       key:'employees',  fmt:fmtNum, cls:'num'},
+  {label:'Avg Salary (EUR)',key:'salary',     fmt:fmtDec, cls:'num'},
+];
+
+const PROFILE_FIELDS = [
+  ['jar_kodas','JAR kodas'],['company_name','Company name'],['legal_form','Legal form'],
+  ['status','Status'],['registration_date','Registration date'],['municipality','Municipality'],
+  ['address','Address'],['evrk_code','EVRK code'],['evrk_name','EVRK name'],
+  ['employees','Employees'],['avg_wage','Avg wage (EUR)'],['sodra_debt','SODRA debt (EUR)'],
+  ['sodra_month','SODRA snapshot'],['authorised_capital','Authorised capital (EUR)'],
+  ['has_board','Has board'],['board_size','Board size'],['board_women','Women on board'],
+  ['ceo_gender','CEO gender'],['in_watchlist','In watchlist'],['notes','Notes'],
+  ['last_updated','Last updated'],
+];
+
+// ── Compute financial cell value ────────────────────────────────────────
+function finVal(row, byYear, y) {
+  const frow = byYear[y] || {};
+  if(row.type==='value') return frow[row.field]??null;
+  if(row.type==='margin_ebt') return safeRatio(frow.ebt, frow.revenue);
+  if(row.type==='margin_net') return safeRatio(frow.net_profit, frow.revenue);
+  if(row.type==='growth') {
+    const prev = (byYear[y-1]||{}).revenue;
+    const curr = frow.revenue;
+    if(prev && curr!=null) return (curr-prev)/prev;
+    return null;
+  }
+  return null;
+}
+
+// ── Compute peer cell value ─────────────────────────────────────────────
+function peerVal(group, fby, sby, y) {
+  const fr = fby[y]||{};
+  if(group.key==='revenue') return fr.revenue??null;
+  if(group.key==='ebt') return fr.ebt??null;
+  if(group.key==='ebt_margin') return safeRatio(fr.ebt, fr.revenue);
+  if(group.key==='net_margin') return safeRatio(fr.net_profit, fr.revenue);
+  if(group.key==='rev_growth') {
+    const prev=(fby[y-1]||{}).revenue, curr=fr.revenue;
+    return (prev&&curr!=null) ? (curr-prev)/prev : null;
+  }
+  if(group.key==='employees') {
+    const ml = (sby[y]||[]);
+    const nums = ml.map(m=>m.employees_avg).filter(v=>v!=null);
+    return nums.length ? nums.reduce((a,b)=>a+b,0)/nums.length : null;
+  }
+  if(group.key==='salary') {
+    const ml = (sby[y]||[]);
+    const nums = ml.map(m=>m.avg_salary).filter(v=>v!=null).map(Number);
+    return nums.length ? nums.reduce((a,b)=>a+b,0)/nums.length : null;
+  }
+  return null;
+}
+
+// ── Render HTML ─────────────────────────────────────────────────────────
+function renderCompany(data) {
+  const {company, financials, sodra, peers, peerFin, peerSodra} = data;
+  const name = company.company_name || '(unknown)';
+  const jar = company.jar_kodas || '';
+  const years = [...new Set(financials.map(f=>f.fin_year))].sort((a,b)=>a-b);
+  const byYear = {}; financials.forEach(f => byYear[f.fin_year]=f);
+
+  let html = `<div class="company-block">`;
+  html += `<div class="company-banner">${name}<span class="jar">${jar}</span></div>`;
+
+  // Profile
+  html += `<div class="section-head">COMPANY PROFILE</div>`;
+  html += `<table class="profile-table">`;
+  for(const [k,label] of PROFILE_FIELDS) {
+    const v = company[k]; html += `<tr><td>${label}</td><td>${v!=null?v:'-'}</td></tr>`;
+  }
+  html += `</table>`;
+
+  // Financials (oldest to newest)
+  html += `<div class="section-head">FINANCIALS &mdash; ${years.length} year(s) of history</div>`;
+  if(!years.length) {
+    html += `<p style="padding:8px 12px;color:var(--text2)">No financial data available.</p>`;
+  } else {
+    html += `<table class="data-table"><thead><tr><th>Metric</th>`;
+    years.forEach(y => html += `<th>${y}</th>`);
+    html += `</tr></thead><tbody>`;
+    for(const row of FIN_ROWS) {
+      html += `<tr><td>${row.label}</td>`;
+      for(const y of years) {
+        const v = finVal(row, byYear, y);
+        const cls = row.cls==='pct' ? pctClass(v) : row.cls;
+        html += `<td class="${cls}">${row.fmt(v)}</td>`;
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  // SODRA
+  html += `<div class="section-head">SODRA WORKFORCE &mdash; ${sodra.length} month(s) of history</div>`;
+  if(!sodra.length) {
+    html += `<p style="padding:8px 12px;color:var(--text2)">No SODRA data available.</p>`;
+  } else {
+    html += `<table class="data-table"><thead><tr><th>Year</th><th>Month</th><th>Employees (avg)</th><th>Avg Salary (EUR)</th><th>SODRA Debt (EUR)</th></tr></thead><tbody>`;
+    sodra.forEach(s => {
+      html += `<tr><td class="num">${s.period_year}</td><td class="num">${s.period_month}</td><td class="num">${fmtNum(s.employees_avg)}</td><td class="num">${fmtDec(s.avg_salary)}</td><td class="num">${fmtDec(s.sodra_debt)}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+
+  // Sector peers
+  const evrk = company.evrk_code||'';
+  const evrkName = company.evrk_name||'';
+  html += `<div class="section-head">SECTOR PEERS &mdash; top ${PEER_LIMIT} by ${RANK_YEAR} revenue in EVRK ${evrk} ${evrkName}</div>`;
+
+  if(!peers || !peers.length) {
+    html += `<p style="padding:8px 12px;color:var(--text2)">No peer companies found.</p>`;
+  } else {
+    // Rank & select top N
+    const ranked = [...peers].sort((a,b) => {
+      const ra = ((peerFin[a.jar_kodas]||{})[RANK_YEAR]||{}).revenue||0;
+      const rb = ((peerFin[b.jar_kodas]||{})[RANK_YEAR]||{}).revenue||0;
+      return rb-ra;
+    });
+    let top = ranked.slice(0, PEER_LIMIT);
+    if(!top.find(p=>p.jar_kodas===jar)) {
+      const me = ranked.find(p=>p.jar_kodas===jar);
+      if(me) top = [...top.slice(0,PEER_LIMIT-1), me];
+    }
+
+    // Header row 1: group labels spanning years
+    html += `<table class="data-table"><thead><tr><th rowspan="2">Company</th><th rowspan="2">Sector (EVRK)</th>`;
+    PEER_GROUPS.forEach(g => html += `<th colspan="${PEER_YEARS.length}" style="text-align:center">${g.label}</th>`);
+    html += `</tr><tr>`;
+    PEER_GROUPS.forEach(() => PEER_YEARS.forEach(y => html += `<th>${y}</th>`));
+    html += `</tr></thead><tbody>`;
+
+    for(const p of top) {
+      const isMe = p.jar_kodas === jar;
+      const trClass = isMe ? ' class="highlight"' : '';
+      const pName = stripLegal(p.company_name||'');
+      const pSector = `${p.evrk_code||''} ${p.evrk_name||''}`.trim();
+      const fby = peerFin[p.jar_kodas]||{};
+      const sby = peerSodra[p.jar_kodas]||{};
+
+      html += `<tr${trClass}><td>${pName}</td><td>${pSector}</td>`;
+      for(const g of PEER_GROUPS) {
+        for(const y of PEER_YEARS) {
+          const v = peerVal(g, fby, sby, y);
+          const cls = g.cls==='pct' ? pctClass(v) : g.cls;
+          html += `<td class="${cls}">${g.fmt(v)}</td>`;
+        }
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// ── Main generate flow ──────────────────────────────────────────────────
+async function generate() {
+  const input = document.getElementById('jarInput').value;
+  const codes = parseCodes(input);
+  if(!codes.length) { setStatus('Please enter at least one valid JAR code.', true); return; }
+
+  const btn = document.getElementById('btnGenerate');
+  const expBtn = document.getElementById('btnExport');
+  btn.disabled = true;
+  expBtn.disabled = true;
+  document.getElementById('report').innerHTML = '';
+  reportData = [];
+
+  const sectorCache = {};
+
+  try {
+    for(let ci=0; ci<codes.length; ci++) {
+      const code = codes[ci];
+      setStatus(`[${ci+1}/${codes.length}] Fetching ${code}...`, false, true);
+
+      const company = await fetchCompany(code);
+      if(!company) {
+        setStatus(`[${ci+1}/${codes.length}] ${code} — not found in database, skipping...`, true);
+        await new Promise(r=>setTimeout(r,500));
+        continue;
+      }
+
+      setStatus(`[${ci+1}/${codes.length}] ${company.company_name} — loading financials...`, false, true);
+      const financials = await fetchFinancials(code);
+
+      setStatus(`[${ci+1}/${codes.length}] ${company.company_name} — loading SODRA...`, false, true);
+      const sodra = await fetchSodra(code);
+
+      let peers=[], peerFin={}, peerSodra={};
+      const evrk = company.evrk_code || '';
+      if(evrk) {
+        if(!sectorCache[evrk]) {
+          setStatus(`[${ci+1}/${codes.length}] ${company.company_name} — loading sector peers (EVRK ${evrk})...`, false, true);
+          const sp = await fetchSectorCompanies(evrk);
+          const pc = sp.map(p=>p.jar_kodas);
+          const yspan = [...new Set([RANK_YEAR, ...PEER_YEARS, Math.min(...PEER_YEARS)-1])].sort();
+          const pf = await fetchFinBulk(pc, yspan);
+          setStatus(`[${ci+1}/${codes.length}] ${company.company_name} — loading peer SODRA data...`, false, true);
+          const ps = await fetchSodraBulk(pc, PEER_YEARS);
+          sectorCache[evrk] = {peers:sp, peerFin:pf, peerSodra:ps};
+        }
+        ({peers, peerFin, peerSodra} = sectorCache[evrk]);
+      }
+
+      const data = {company, financials, sodra, peers, peerFin, peerSodra};
+      reportData.push(data);
+
+      document.getElementById('report').innerHTML += renderCompany(data);
+    }
+
+    if(reportData.length) {
+      setStatus(`Done — ${reportData.length} company report(s) generated.`);
+      expBtn.disabled = false;
+    } else {
+      setStatus('No companies found for the given JAR codes.', true);
+    }
+  } catch(e) {
+    setStatus(`Error: ${e.message}`, true);
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Excel export ────────────────────────────────────────────────────────
+function exportExcel() {
+  if(!reportData.length) return;
+  const wb = XLSX.utils.book_new();
+  const usedNames = new Set();
+
+  for(const data of reportData) {
+    const {company, financials, sodra, peers, peerFin, peerSodra} = data;
+    const name = company.company_name || '(unknown)';
+    const jar = company.jar_kodas || '';
+
+    // Sheet name: first word, unique, max 31 chars
+    let sn = firstName(name).replace(/[\\/*?:\[\]]/g,'').substring(0,31);
+    if(!sn) sn = jar.substring(0,31);
+    let base=sn, idx=2;
+    while(usedNames.has(sn.toLowerCase())) { const suf=` (${idx++})`; sn=base.substring(0,31-suf.length)+suf; }
+    usedNames.add(sn.toLowerCase());
+
+    const rows = [];
+    const merges = [];
+    const styles = {}; // row:col -> style hints
+
+    // Banner
+    rows.push([`${name}   [${jar}]`]);
+    rows.push([]);
+
+    // Profile
+    rows.push(['COMPANY PROFILE']);
+    for(const [k,label] of PROFILE_FIELDS) {
+      rows.push([label, company[k]!=null?company[k]:'']);
+    }
+    rows.push([]);
+
+    // Financials
+    const years = [...new Set(financials.map(f=>f.fin_year))].sort((a,b)=>a-b);
+    const byYear = {}; financials.forEach(f => byYear[f.fin_year]=f);
+
+    rows.push([`FINANCIALS - ${years.length} year(s) of history`]);
+    if(years.length) {
+      rows.push(['Metric', ...years]);
+      for(const fr of FIN_ROWS) {
+        const vals = years.map(y => {
+          const v = finVal(fr, byYear, y);
+          return v!=null ? v : '';
+        });
+        rows.push([fr.label, ...vals]);
+      }
+    } else {
+      rows.push(['No financial data available.']);
+    }
+    rows.push([]);
+
+    // SODRA
+    rows.push([`SODRA WORKFORCE - ${sodra.length} month(s) of history`]);
+    if(sodra.length) {
+      rows.push(['Year','Month','Employees (avg)','Avg Salary (EUR)','SODRA Debt (EUR)']);
+      sodra.forEach(s => rows.push([s.period_year, s.period_month, s.employees_avg, s.avg_salary, s.sodra_debt]));
+    } else {
+      rows.push(['No SODRA data available.']);
+    }
+    rows.push([]);
+    rows.push([]);
+
+    // Sector peers
+    const evrk = company.evrk_code||'';
+    const evrkName = company.evrk_name||'';
+    rows.push([`SECTOR PEERS - top ${PEER_LIMIT} by ${RANK_YEAR} revenue in EVRK ${evrk} ${evrkName}`]);
+
+    if(peers && peers.length) {
+      const ranked = [...peers].sort((a,b) => {
+        const ra = ((peerFin[a.jar_kodas]||{})[RANK_YEAR]||{}).revenue||0;
+        const rb = ((peerFin[b.jar_kodas]||{})[RANK_YEAR]||{}).revenue||0;
+        return rb-ra;
+      });
+      let top = ranked.slice(0, PEER_LIMIT);
+      if(!top.find(p=>p.jar_kodas===jar)) {
+        const me = ranked.find(p=>p.jar_kodas===jar);
+        if(me) top = [...top.slice(0,PEER_LIMIT-1), me];
+      }
+
+      // Header row 1: group labels
+      const h1 = ['Company','Sector (EVRK)'];
+      PEER_GROUPS.forEach(g => { h1.push(g.label); for(let i=1;i<PEER_YEARS.length;i++) h1.push(''); });
+      rows.push(h1);
+
+      // Header row 2: years
+      const h2 = ['',''];
+      PEER_GROUPS.forEach(() => PEER_YEARS.forEach(y => h2.push(y)));
+      rows.push(h2);
+
+      // Data rows
+      const peerStartRow = rows.length;
+      for(const p of top) {
+        const fby = peerFin[p.jar_kodas]||{};
+        const sby = peerSodra[p.jar_kodas]||{};
+        const pRow = [stripLegal(p.company_name||''), `${p.evrk_code||''} ${p.evrk_name||''}`.trim()];
+        for(const g of PEER_GROUPS) {
+          for(const y of PEER_YEARS) {
+            const v = peerVal(g, fby, sby, y);
+            pRow.push(v!=null ? v : '');
+          }
+        }
+        rows.push(pRow);
+      }
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // Apply number formats
+    const range = XLSX.utils.decode_range(ws['!ref']||'A1');
+    for(let R=range.s.r; R<=range.e.r; R++) {
+      for(let C=range.s.c; C<=range.e.c; C++) {
+        const addr = XLSX.utils.encode_cell({r:R,c:C});
+        const cell = ws[addr];
+        if(!cell || cell.v==null || cell.v==='') continue;
+
+        // Detect what row type this is by col A label
+        const labelAddr = XLSX.utils.encode_cell({r:R, c:0});
+        const label = (ws[labelAddr]||{}).v || '';
+
+        if(C >= 1 && typeof cell.v === 'number') {
+          // Check if it's a percentage row
+          if(/Growth|Margin/i.test(label) && C >= 1) {
+            cell.z = '0.0%';
+          } else if(/Revenue|EBT|Profit|Assets|Equity|Liabilities|Authorised|debt/i.test(label) && !/Margin|Growth/i.test(label)) {
+            cell.z = '#,##0';
+          } else if(/Salary/i.test(label)) {
+            cell.z = '#,##0.00';
+          }
+        }
+      }
+    }
+
+    // Set column widths
+    ws['!cols'] = [{wch:32},{wch:30}];
+    for(let i=2; i<40; i++) ws['!cols'].push({wch:14});
+
+    XLSX.utils.book_append_sheet(wb, ws, sn);
+  }
+
+  const ts = new Date().toISOString().slice(0,16).replace('T','_').replace(':','');
+  XLSX.writeFile(wb, `CompanyDB_Export_${ts}.xlsx`);
+}
+
+// Enter key triggers generate
+document.getElementById('jarInput').addEventListener('keydown', e => {
+  if(e.key==='Enter') generate();
+});
+</script>
+</body>
+</html>
