@@ -206,8 +206,8 @@ tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;col
 
     <label>Filter year</label>
     <select id="f-year" onchange="applyFilters()">
-      <option value="2025" selected>2025</option>
-      <option value="2024">2024</option>
+      <option value="2025">2025</option>
+      <option value="2024" selected>2024</option>
       <option value="2023">2023</option>
       <option value="2022">2022</option>
       <option value="2021">2021</option>
@@ -290,8 +290,40 @@ const CACHE_KEY = 'companydb_v2_cache';
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
 const PAGE_SIZE = 1000;
 const YEARS = [2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025];
-const CURRENT_YEAR = 2025;
-const PREV_YEAR = 2024;
+// Latest years are data-driven, recomputed after data loads.
+// Financial-based KPIs use FIN_LATEST_YEAR; SODRA-based KPIs use SODRA_LATEST_YEAR.
+let FIN_LATEST_YEAR = 2024;   // fallback
+let FIN_FIN_PREV_YEAR = 2023;
+let SODRA_LATEST_YEAR = 2025;
+let SODRA_FIN_PREV_YEAR = 2024;
+
+function computeLatestYears() {
+  // Scan financials to find the latest year where ANY company reports revenue or ebt
+  let latestFin = 2015, prevFin = 2014;
+  for (const jar in state.financials) {
+    for (const f of state.financials[jar]) {
+      if (f.revenue != null || f.ebt != null) {
+        if (f.year > latestFin) { prevFin = latestFin; latestFin = f.year; }
+        else if (f.year > prevFin && f.year < latestFin) { prevFin = f.year; }
+      }
+    }
+  }
+  FIN_LATEST_YEAR = latestFin;
+  FIN_FIN_PREV_YEAR = prevFin;
+
+  // SODRA latest
+  let latestSo = 2015, prevSo = 2014;
+  for (const jar in state.sodra) {
+    for (const y in state.sodra[jar]) {
+      const yy = parseInt(y);
+      if (yy > latestSo) { prevSo = latestSo; latestSo = yy; }
+      else if (yy > prevSo && yy < latestSo) { prevSo = yy; }
+    }
+  }
+  SODRA_LATEST_YEAR = latestSo;
+  SODRA_FIN_PREV_YEAR = prevSo;
+  console.log(`Latest financial year: ${FIN_LATEST_YEAR} (prev: ${FIN_FIN_PREV_YEAR}) | Latest SODRA year: ${SODRA_LATEST_YEAR} (prev: ${SODRA_FIN_PREV_YEAR})`);
+}
 
 /* ==========================================================
  *  State
@@ -307,7 +339,7 @@ const state = {
   filters: {
     search: '',
     muni: '',
-    year: 2025,
+    year: 2024,
     minEmp: null,
     minRev: null, maxRev: null,
     minEbt: null, maxEbt: null,
@@ -352,7 +384,7 @@ async function sbFetchAll(path) {
     results.push(...data);
     if (data.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;
-    if (offset > 200000) break; // safety
+    if (offset > 500000) break; // safety — now covers all financials + sodra
   }
   return results;
 }
@@ -403,6 +435,7 @@ async function loadAllData() {
     state.sodra = cached.sodra;
     buildSectorOptions();
     buildMunicipalityOptions();
+    computeLatestYears();
     state.dataLoaded = true;
     return { fromCache: true };
   }
@@ -422,7 +455,7 @@ async function loadAllData() {
   buildMunicipalityOptions();
 
   setLoading(`Loading financials (${YEARS.length} years)…`);
-  const fins = await sbFetchAll('financials?select=jar_kodas,fin_year,revenue,ebt,net_profit');
+  const fins = await sbFetchAll('financials?select=jar_kodas,fin_year,revenue,ebt,net_profit&order=jar_kodas,fin_year');
   for (const f of fins) {
     const normalized = {
       jar_kodas: f.jar_kodas,
@@ -441,7 +474,7 @@ async function loadAllData() {
 
   setLoading('Loading SODRA workforce data…');
   // Real schema: jar_kodas, period_year, period_month, employees_avg, avg_salary
-  const sodra = await sbFetchAll('sodra_workforce?select=jar_kodas,period_year,employees_avg,avg_salary');
+  const sodra = await sbFetchAll('sodra_workforce?select=jar_kodas,period_year,employees_avg,avg_salary&order=jar_kodas,period_year');
   // Aggregate to year-level (averaging across months in each year)
   const sByCompanyYear = {};
   for (const s of sodra) {
@@ -465,6 +498,7 @@ async function loadAllData() {
   }
 
   saveCache();
+  computeLatestYears();
   state.dataLoaded = true;
   return { fromCache: false };
 }
@@ -725,7 +759,7 @@ function readFiltersFromUI() {
   // Search is a sidebar-list-only filter, NOT a cohort filter
   f.search = (document.getElementById('f-search')?.value || '').toLowerCase().trim();
   f.muni = document.getElementById('f-muni')?.value || '';
-  f.year = parseInt(document.getElementById('f-year')?.value || '2025') || 2025;
+  f.year = parseInt(document.getElementById('f-year')?.value || '2024') || 2024;
   f.minEmp = g('f-emp');
   f.minRev = g('f-rev-min'); f.maxRev = g('f-rev-max');
   f.minEbt = g('f-ebt-min'); f.maxEbt = g('f-ebt-max');
@@ -817,7 +851,7 @@ function clearFilters() {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const muni = document.getElementById('f-muni'); if (muni) muni.value = '';
-  const yr = document.getElementById('f-year'); if (yr) yr.value = '2025';
+  const yr = document.getElementById('f-year'); if (yr) yr.value = '2024';
   applyFilters();
 }
 
@@ -838,9 +872,14 @@ function renderCompanyList() {
 
   const total = displayed.length;
   const totalBase = base.length;
-  count.textContent = search
-    ? `${total.toLocaleString()} of ${totalBase.toLocaleString()}`
-    : `${totalBase.toLocaleString()} ${totalBase === 1 ? 'company' : 'companies'}`;
+  const totalAll = state.allCompanies.length;
+  if (search) {
+    count.textContent = `${total.toLocaleString()} matches`;
+  } else if (hasActiveFilters()) {
+    count.textContent = `${totalBase.toLocaleString()} of ${totalAll.toLocaleString()} filtered`;
+  } else {
+    count.textContent = `${totalAll.toLocaleString()} companies`;
+  }
 
   // Sort by current year's revenue (desc), then name
   const y = state.filters.year;
@@ -1003,11 +1042,14 @@ function renderOverview() {
   }
 
   // KPIs
-  const cur = sectorTotalsByYear(cohort.companies, CURRENT_YEAR);
-  const prev = sectorTotalsByYear(cohort.companies, PREV_YEAR);
+  const cur = sectorTotalsByYear(cohort.companies, FIN_LATEST_YEAR);
+  const prev = sectorTotalsByYear(cohort.companies, FIN_PREV_YEAR);
+  // Salary uses SODRA's latest year (which may be ahead of financials' latest year)
+  const curSodra = sectorTotalsByYear(cohort.companies, SODRA_LATEST_YEAR);
+  const prevSodra = sectorTotalsByYear(cohort.companies, SODRA_PREV_YEAR);
   const revGrowth = yoyPct(cur.total_revenue, prev.total_revenue);
   const revPerEmpGrowth = yoyPct(cur.median_rev_per_emp, prev.median_rev_per_emp);
-  const salaryGrowth = yoyPct(cur.median_salary, prev.median_salary);
+  const salaryGrowth = yoyPct(curSodra.median_salary, prevSodra.median_salary);
 
   const selectedNames = [...state.selectedCompanies.values()].map(c => c.name);
   const selectedLine = selectedNames.length
@@ -1037,10 +1079,10 @@ function renderOverview() {
       <div class="kpi">
         <div class="kpi-label">Companies in sector</div>
         <div class="kpi-value">${cur.n_companies.toLocaleString()}</div>
-        <div class="kpi-change flat">${cur.n_with_revenue.toLocaleString()} reported ${CURRENT_YEAR} revenue</div>
+        <div class="kpi-change flat">${cur.n_with_revenue.toLocaleString()} reported ${FIN_LATEST_YEAR} revenue</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Total revenue ${CURRENT_YEAR}</div>
+        <div class="kpi-label">Total revenue ${FIN_LATEST_YEAR}</div>
         <div class="kpi-value">€${fmtEUR(cur.total_revenue)}</div>
         <div class="kpi-change ${revGrowth==null ? 'flat' : (revGrowth>=0 ? 'up' : 'down')}">
           ${revGrowth==null ? '—' : fmtPctSigned(revGrowth) + ' YoY'}
@@ -1049,7 +1091,7 @@ function renderOverview() {
       <div class="kpi">
         <div class="kpi-label">EBT margin % (weighted)</div>
         <div class="kpi-value">${fmtPct(cur.weighted_ebt_margin)}</div>
-        <div class="kpi-change flat">${PREV_YEAR}: ${fmtPct(prev.weighted_ebt_margin)}</div>
+        <div class="kpi-change flat">${FIN_PREV_YEAR}: ${fmtPct(prev.weighted_ebt_margin)}</div>
       </div>
       <div class="kpi">
         <div class="kpi-label">Median revenue / employee</div>
@@ -1059,8 +1101,8 @@ function renderOverview() {
         </div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Median salary (monthly)</div>
-        <div class="kpi-value">€${fmtEUR(cur.median_salary)}</div>
+        <div class="kpi-label">Median salary ${SODRA_LATEST_YEAR} (monthly)</div>
+        <div class="kpi-value">€${fmtEUR(curSodra.median_salary)}</div>
         <div class="kpi-change ${salaryGrowth==null ? 'flat' : (salaryGrowth>=0 ? 'up' : 'down')}">
           ${salaryGrowth==null ? '—' : fmtPctSigned(salaryGrowth) + ' YoY'}
         </div>
@@ -1070,7 +1112,7 @@ function renderOverview() {
     <!-- Pie chart + market share table -->
     <div class="pie-grid">
       <div class="chart-box">
-        <h3>Market share — Top 5 (${CURRENT_YEAR})</h3>
+        <h3>Market share — Top 5 (${FIN_LATEST_YEAR})</h3>
         <div class="chart-container"><canvas id="pieChart"></canvas></div>
       </div>
       <div class="chart-box">
@@ -1082,7 +1124,7 @@ function renderOverview() {
     <!-- Bubble chart -->
     <div class="chart-grid-1">
       <div class="chart-box">
-        <h3>Top 5 + selected — EBT margin vs Revenue (${CURRENT_YEAR})</h3>
+        <h3>Top 5 + selected — EBT margin vs Revenue (${FIN_LATEST_YEAR})</h3>
         <div class="chart-container-lg"><canvas id="bubbleChart"></canvas></div>
       </div>
     </div>
@@ -1151,7 +1193,7 @@ function getTop5PlusSelected(companies, year) {
  * ========================================================== */
 function drawPieChart(cohort) {
   destroyChart('pieChart');
-  const year = CURRENT_YEAR;
+  const year = FIN_LATEST_YEAR;
   const totalRev = sum(cohort.companies.map(c => getCompanyYearData(c.jar_kodas, year).revenue));
   const { top5 } = getTop5PlusSelected(cohort.companies, year);
 
@@ -1222,7 +1264,7 @@ function drawMarketShareTable(cohort) {
   const sectorTotals = {};
   for (const y of yearsCols) sectorTotals[y] = sum(cohort.companies.map(c => getCompanyYearData(c.jar_kodas, y).revenue));
 
-  const { top5, selectedExtras } = getTop5PlusSelected(cohort.companies, CURRENT_YEAR);
+  const { top5, selectedExtras } = getTop5PlusSelected(cohort.companies, FIN_LATEST_YEAR);
   const pool = [...top5, ...selectedExtras];
   const selKeys = new Set([...state.selectedCompanies.keys()]);
 
@@ -1245,7 +1287,7 @@ function drawMarketShareTable(cohort) {
  * ========================================================== */
 function drawBubbleChart(cohort) {
   destroyChart('bubbleChart');
-  const year = CURRENT_YEAR;
+  const year = FIN_LATEST_YEAR;
   const { top5, selectedExtras } = getTop5PlusSelected(cohort.companies, year);
   const pool = [...top5, ...selectedExtras];
   if (!pool.length) return;
@@ -1334,12 +1376,23 @@ function renderCompaniesInSectorTable(cohort) {
   const tbl = document.getElementById('companiesInSectorTable');
   const yearsCols = [2023, 2024, 2025];
 
-  // Sort cohort by 2025 revenue desc
-  const rows = cohort.companies
-    .map(c => ({ c, rev2025: getCompanyYearData(c.jar_kodas, 2025).revenue || 0 }))
-    .sort((a,b) => b.rev2025 - a.rev2025);
-
+  // Sort: selected companies first, then by latest-year-with-data revenue desc
   const selKeys = new Set([...state.selectedCompanies.keys()]);
+  const sortRev = c => {
+    // Try each year from latest fin year back, pick first non-null revenue for sort
+    for (let y = FIN_LATEST_YEAR; y >= 2015; y--) {
+      const r = getCompanyYearData(c.jar_kodas, y).revenue;
+      if (r != null) return r;
+    }
+    return 0;
+  };
+  const rows = cohort.companies
+    .map(c => ({ c, sortKey: sortRev(c), isSel: selKeys.has(c.jar_kodas) }))
+    .sort((a,b) => {
+      if (a.isSel !== b.isSel) return a.isSel ? -1 : 1;  // selected first
+      return b.sortKey - a.sortKey;
+    });
+
   const limit = state.showAllInTable ? rows.length : Math.min(20, rows.length);
 
   const header = `
@@ -1534,8 +1587,8 @@ function renderCompanyTabs() {
     panel.id = panelId;
 
     // Summary table
-    const curY = getCompanyYearDerived(c.jar_kodas, CURRENT_YEAR);
-    const prevY = getCompanyYearDerived(c.jar_kodas, PREV_YEAR);
+    const curY = getCompanyYearDerived(c.jar_kodas, FIN_LATEST_YEAR);
+    const prevY = getCompanyYearDerived(c.jar_kodas, FIN_PREV_YEAR);
     const revG = yoyPct(curY.revenue, prevY.revenue);
 
     panel.innerHTML = `
@@ -1545,10 +1598,10 @@ function renderCompanyTabs() {
       </div>
 
       <div class="kpi-grid">
-        <div class="kpi"><div class="kpi-label">Revenue ${CURRENT_YEAR}</div><div class="kpi-value">€${fmtEUR(curY.revenue)}</div><div class="kpi-change ${revG==null ? 'flat' : (revG>=0 ? 'up' : 'down')}">${revG==null ? '—' : fmtPctSigned(revG) + ' YoY'}</div></div>
-        <div class="kpi"><div class="kpi-label">EBT ${CURRENT_YEAR}</div><div class="kpi-value">€${fmtEUR(curY.ebt)}</div><div class="kpi-change flat">Margin: ${fmtPct(curY.ebt_margin)}</div></div>
+        <div class="kpi"><div class="kpi-label">Revenue ${FIN_LATEST_YEAR}</div><div class="kpi-value">€${fmtEUR(curY.revenue)}</div><div class="kpi-change ${revG==null ? 'flat' : (revG>=0 ? 'up' : 'down')}">${revG==null ? '—' : fmtPctSigned(revG) + ' YoY'}</div></div>
+        <div class="kpi"><div class="kpi-label">EBT ${FIN_LATEST_YEAR}</div><div class="kpi-value">€${fmtEUR(curY.ebt)}</div><div class="kpi-change flat">Margin: ${fmtPct(curY.ebt_margin)}</div></div>
         <div class="kpi"><div class="kpi-label">Employees (avg)</div><div class="kpi-value">${curY.employees==null ? '—' : Math.round(curY.employees).toLocaleString()}</div><div class="kpi-change flat">Rev/emp: €${fmtEUR(curY.rev_per_emp)}</div></div>
-        <div class="kpi"><div class="kpi-label">Avg salary (€/mo)</div><div class="kpi-value">€${fmtEUR(curY.salary)}</div><div class="kpi-change flat">${CURRENT_YEAR}</div></div>
+        <div class="kpi"><div class="kpi-label">Avg salary (€/mo)</div><div class="kpi-value">€${fmtEUR(curY.salary)}</div><div class="kpi-change flat">${FIN_LATEST_YEAR}</div></div>
       </div>
 
       <h2 style="margin:18px 0 10px;font-size:15px;color:#111">Historical trends (2015–2025) — vs sector</h2>
@@ -1882,12 +1935,12 @@ async function buildOverviewSheet(wb, cohort, images) {
   sheet.addRow([]);
 
   // --- KPIs ---
-  const cur = sectorTotalsByYear(cohort.companies, CURRENT_YEAR);
-  const prev = sectorTotalsByYear(cohort.companies, PREV_YEAR);
+  const cur = sectorTotalsByYear(cohort.companies, FIN_LATEST_YEAR);
+  const prev = sectorTotalsByYear(cohort.companies, FIN_PREV_YEAR);
 
   addSectionHeader(sheet, 'KEY METRICS', 4);
   addTable(sheet,
-    ['Metric', `${CURRENT_YEAR}`, `${PREV_YEAR}`, 'YoY %'],
+    ['Metric', `${FIN_LATEST_YEAR}`, `${FIN_PREV_YEAR}`, 'YoY %'],
     [
       ['Companies in sector', cur.n_companies, prev.n_companies, null],
       ['Total revenue (€)', cur.total_revenue, prev.total_revenue, pctOrNull(yoyPct(cur.total_revenue, prev.total_revenue))],
@@ -1914,7 +1967,7 @@ async function buildOverviewSheet(wb, cohort, images) {
 
   // --- Market share table ---
   addSectionHeader(sheet, 'MARKET SHARE — Top 5 + selected companies', 7);
-  const { top5, selectedExtras } = getTop5PlusSelected(cohort.companies, CURRENT_YEAR);
+  const { top5, selectedExtras } = getTop5PlusSelected(cohort.companies, FIN_LATEST_YEAR);
   const pool = [...top5, ...selectedExtras];
   const sectorTotals3y = {};
   for (const y of [2023, 2024, 2025]) {
@@ -2007,9 +2060,16 @@ async function buildOverviewSheet(wb, cohort, images) {
   sheet.addRow([]);
 
   // --- Companies in sector (full list) ---
-  addSectionHeader(sheet, 'COMPANIES IN SECTOR — full list, sorted by 2025 revenue', 18);
+  addSectionHeader(sheet, `COMPANIES IN SECTOR — full list, sorted by latest revenue (${FIN_LATEST_YEAR})`, 18);
+  const sortRev = c => {
+    for (let y = FIN_LATEST_YEAR; y >= 2015; y--) {
+      const r = getCompanyYearData(c.jar_kodas, y).revenue;
+      if (r != null) return r;
+    }
+    return 0;
+  };
   const sorted = cohort.companies
-    .map(c => ({ c, rev: getCompanyYearData(c.jar_kodas, 2025).revenue || 0 }))
+    .map(c => ({ c, rev: sortRev(c) }))
     .sort((a, b) => b.rev - a.rev);
   const cisRows = sorted.map(({ c }) => {
     const revs = [2023,2024,2025].map(y => getCompanyYearData(c.jar_kodas, y).revenue);
@@ -2107,12 +2167,12 @@ async function buildCompanySheet(wb, c, cohort, images) {
   sheet.addRow([]);
 
   // KPIs
-  const cur = getCompanyYearDerived(c.jar_kodas, CURRENT_YEAR);
-  const prev = getCompanyYearDerived(c.jar_kodas, PREV_YEAR);
+  const cur = getCompanyYearDerived(c.jar_kodas, FIN_LATEST_YEAR);
+  const prev = getCompanyYearDerived(c.jar_kodas, FIN_PREV_YEAR);
 
   addSectionHeader(sheet, 'KEY METRICS', 4);
   addTable(sheet,
-    ['Metric', `${CURRENT_YEAR}`, `${PREV_YEAR}`, 'YoY %'],
+    ['Metric', `${FIN_LATEST_YEAR}`, `${FIN_PREV_YEAR}`, 'YoY %'],
     [
       ['Revenue (€)', cur.revenue, prev.revenue, pctOrNull(yoyPct(cur.revenue, prev.revenue))],
       ['EBT (€)', cur.ebt, prev.ebt, pctOrNull(yoyPct(cur.ebt, prev.ebt))],
