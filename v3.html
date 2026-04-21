@@ -125,11 +125,20 @@ html,body{font-family:'Calibri','Segoe UI',-apple-system,BlinkMacSystemFont,sans
 .chart-container-lg{position:relative;height:340px}
 
 /* ---- Tables ---- */
-.tbl-wrap{overflow-x:auto;background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #f0ebdd;white-space:nowrap}
-th{background:var(--c-earth);color:#fff;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;position:sticky;top:0;border-bottom:2px solid var(--c-gold)}
+.tbl-wrap{overflow-x:auto;background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;position:relative}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #f0ebdd;white-space:nowrap;background:var(--c-surface)}
+th{background:var(--c-earth);color:#fff;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;position:sticky;top:0;border-bottom:2px solid var(--c-gold);z-index:2}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
+/* Sticky first column */
+.sticky-col-1{position:sticky;left:0;z-index:1;background:var(--c-surface);box-shadow:2px 0 0 0 var(--c-border)}
+th.sticky-col-1{background:var(--c-earth);z-index:3}
+.sticky-col-2{position:sticky;left:32px;z-index:1;background:var(--c-surface);box-shadow:2px 0 0 0 var(--c-border)}
+th.sticky-col-2{background:var(--c-earth);z-index:3;box-shadow:2px 0 0 0 var(--c-gold)}
+tr:hover td.sticky-col-1,tr:hover td.sticky-col-2{background:#faf8f0}
+tr.selected-row td.sticky-col-1,tr.selected-row td.sticky-col-2{background:rgba(233,172,20,.18)!important}
+.sticky-col-1{width:32px;min-width:32px}
+.sticky-col-2{max-width:240px;overflow:hidden;text-overflow:ellipsis}
 tr:hover td{background:#faf8f0}
 tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;color:var(--c-earth)}
 .pct-up{color:var(--c-success);font-weight:600}
@@ -154,6 +163,10 @@ tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;col
 .loading-overlay .spinner{width:44px;height:44px;border:3px solid var(--c-border);border-top-color:var(--c-gold);border-radius:50%;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-overlay .msg{color:var(--c-earth);font-size:14px;font-weight:600;letter-spacing:.02em}
+
+/* ---- Background refresh indicator (bottom-right toast) ---- */
+.refresh-indicator{position:fixed;bottom:16px;right:16px;background:var(--c-earth);color:#fff;padding:8px 14px;border-radius:4px;display:none;align-items:center;gap:8px;font-size:12px;font-weight:500;z-index:500;box-shadow:0 4px 12px rgba(69,65,50,.25);border-left:3px solid var(--c-gold)}
+.refresh-spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:var(--c-gold);border-radius:50%;animation:spin .9s linear infinite}
 
 /* ---- Section header (sector title + selected companies) ---- */
 .overview-header{margin-bottom:14px;padding:14px 18px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;border-left:4px solid var(--c-gold)}
@@ -390,45 +403,92 @@ async function sbFetchAll(path) {
 }
 
 /* ==========================================================
- *  Cache
+ *  Cache — IndexedDB (no size limit for our 30MB payload)
  * ========================================================== */
-function loadCache() {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const cached = JSON.parse(raw);
-    if (Date.now() - cached.ts > CACHE_TTL) return null;
-    return cached;
-  } catch(e) { return null; }
-}
+const IDB_NAME = 'companydb_v2';
+const IDB_STORE = 'dataset';
+const IDB_KEY = 'snapshot';
 
-function saveCache() {
-  try {
-    const payload = {
-      ts: Date.now(),
-      allCompanies: state.allCompanies,
-      financials: state.financials,
-      sodra: state.sodra
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE);
+      }
     };
-    const str = JSON.stringify(payload);
-    // ~10MB browser limit -- if too big, skip caching
-    if (str.length < 9 * 1024 * 1024) {
-      localStorage.setItem(CACHE_KEY, str);
-    } else {
-      console.warn('Cache too large, skipping:', (str.length/1024/1024).toFixed(1), 'MB');
-    }
-  } catch(e) { console.warn('Cache save failed:', e); }
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
 }
 
-function clearCache() {
-  localStorage.removeItem(CACHE_KEY);
+async function idbGet(key) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch(e) { console.warn('idbGet failed:', e); return null; }
+}
+
+async function idbSet(key, value) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(value, key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch(e) { console.warn('idbSet failed:', e); return false; }
+}
+
+async function idbDelete(key) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch(e) { return false; }
+}
+
+async function loadCache() {
+  const snap = await idbGet(IDB_KEY);
+  if (!snap) return null;
+  return snap;  // no TTL check — option A: always trust cache, always refresh in background
+}
+
+async function saveCache() {
+  const payload = {
+    ts: Date.now(),
+    allCompanies: state.allCompanies,
+    financials: state.financials,
+    sodra: state.sodra
+  };
+  const ok = await idbSet(IDB_KEY, payload);
+  if (ok) console.log('Cache saved to IndexedDB');
+  return ok;
+}
+
+async function clearCache() {
+  // Legacy: also remove old localStorage-based cache if still present
+  try { localStorage.removeItem('companydb_v2_cache'); } catch(e){}
+  await idbDelete(IDB_KEY);
 }
 
 /* ==========================================================
  *  Data loading
  * ========================================================== */
 async function loadAllData() {
-  const cached = loadCache();
+  // Try cache first
+  const cached = await loadCache();
   if (cached) {
     state.allCompanies = cached.allCompanies;
     state.financials = cached.financials;
@@ -437,13 +497,23 @@ async function loadAllData() {
     buildMunicipalityOptions();
     computeLatestYears();
     state.dataLoaded = true;
-    return { fromCache: true };
+    return { fromCache: true, cachedAt: cached.ts };
   }
 
-  setLoading('Loading companies…');
+  // No cache → do a blocking fetch
+  await fetchAndInstallData(/*background=*/false);
+  state.dataLoaded = true;
+  return { fromCache: false };
+}
+
+// Fetch all data from Supabase, install into state, and save to cache.
+// When called with background=true, no loading overlay messages are shown.
+async function fetchAndInstallData(background) {
+  const setMsg = (m) => { if (!background) setLoading(m); };
+
+  setMsg('Loading companies…');
   const companies = await sbFetchAll('companies?select=jar_kodas,company_name,evrk_code,evrk_name,legal_form,municipality');
-  // Normalize to our internal shape: .name field for UI
-  state.allCompanies = companies.map(c => ({
+  const normalizedCompanies = companies.map(c => ({
     jar_kodas: c.jar_kodas,
     name: c.company_name || '',
     evrk_code: c.evrk_code,
@@ -451,31 +521,27 @@ async function loadAllData() {
     legal_form: c.legal_form,
     municipality: c.municipality || ''
   }));
-  buildSectorOptions();
-  buildMunicipalityOptions();
 
-  setLoading(`Loading financials (${YEARS.length} years)…`);
+  setMsg(`Loading financials (${YEARS.length} years)…`);
   const fins = await sbFetchAll('financials?select=jar_kodas,fin_year,revenue,ebt,net_profit&order=jar_kodas,fin_year');
+  const financialsByJar = {};
   for (const f of fins) {
     const normalized = {
       jar_kodas: f.jar_kodas,
-      year: f.fin_year,       // normalize to .year
+      year: f.fin_year,
       revenue: f.revenue,
       ebt: f.ebt,
       net_profit: f.net_profit
     };
-    if (!state.financials[f.jar_kodas]) state.financials[f.jar_kodas] = [];
-    state.financials[f.jar_kodas].push(normalized);
+    if (!financialsByJar[f.jar_kodas]) financialsByJar[f.jar_kodas] = [];
+    financialsByJar[f.jar_kodas].push(normalized);
   }
-  // Sort by year
-  for (const k in state.financials) {
-    state.financials[k].sort((a,b) => a.year - b.year);
+  for (const k in financialsByJar) {
+    financialsByJar[k].sort((a,b) => a.year - b.year);
   }
 
-  setLoading('Loading SODRA workforce data…');
-  // Real schema: jar_kodas, period_year, period_month, employees_avg, avg_salary
+  setMsg('Loading SODRA workforce data…');
   const sodra = await sbFetchAll('sodra_workforce?select=jar_kodas,period_year,employees_avg,avg_salary&order=jar_kodas,period_year');
-  // Aggregate to year-level (averaging across months in each year)
   const sByCompanyYear = {};
   for (const s of sodra) {
     if (!s.period_year) continue;
@@ -486,21 +552,71 @@ async function loadAllData() {
     if (s.employees_avg != null) sByCompanyYear[k][y].emps.push(s.employees_avg);
     if (s.avg_salary != null && s.avg_salary > 0) sByCompanyYear[k][y].sals.push(s.avg_salary);
   }
+  const sodraByJar = {};
   for (const k in sByCompanyYear) {
-    state.sodra[k] = {};
+    sodraByJar[k] = {};
     for (const y in sByCompanyYear[k]) {
       const {emps, sals} = sByCompanyYear[k][y];
-      state.sodra[k][y] = {
+      sodraByJar[k][y] = {
         avg_employees: emps.length ? emps.reduce((a,b)=>a+b,0)/emps.length : null,
         avg_salary: sals.length ? sals.reduce((a,b)=>a+b,0)/sals.length : null
       };
     }
   }
 
-  saveCache();
+  // Install
+  state.allCompanies = normalizedCompanies;
+  state.financials = financialsByJar;
+  state.sodra = sodraByJar;
+  buildSectorOptions();
+  buildMunicipalityOptions();
   computeLatestYears();
-  state.dataLoaded = true;
-  return { fromCache: false };
+  await saveCache();
+}
+
+// Kick off a background refresh: fetch freshly, install, re-render the UI,
+// show a small toast if something changed.
+async function backgroundRefresh() {
+  try {
+    showRefreshIndicator(true);
+    // Snapshot old fingerprint (cheap: length + latest years) to decide if anything changed
+    const oldFP = datasetFingerprint();
+    await fetchAndInstallData(/*background=*/true);
+    const newFP = datasetFingerprint();
+    showRefreshIndicator(false);
+    if (oldFP !== newFP) {
+      // Re-render in case something changed
+      applyFilters();
+      showStatus('Data refreshed — new info available', 'success');
+    } else {
+      showStatus('Data is up to date', 'success');
+    }
+  } catch (e) {
+    showRefreshIndicator(false);
+    console.warn('Background refresh failed:', e);
+    // Silent failure — user keeps using cached data
+  }
+}
+
+// Cheap way to tell if the dataset changed: total rows + latest year stamps
+function datasetFingerprint() {
+  let finRows = 0;
+  for (const k in state.financials) finRows += state.financials[k].length;
+  let sodraRows = 0;
+  for (const k in state.sodra) sodraRows += Object.keys(state.sodra[k]).length;
+  return `${state.allCompanies.length}|${finRows}|${sodraRows}|${FIN_LATEST_YEAR}|${SODRA_LATEST_YEAR}`;
+}
+
+function showRefreshIndicator(on) {
+  let el = document.getElementById('refreshIndicator');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'refreshIndicator';
+    el.className = 'refresh-indicator';
+    el.innerHTML = '<span class="refresh-spinner"></span> Refreshing in background…';
+    document.body.appendChild(el);
+  }
+  el.style.display = on ? 'flex' : 'none';
 }
 
 function buildSectorOptions() {
@@ -1209,13 +1325,22 @@ function drawPieChart(cohort) {
   }
 
   const selKeys = new Set([...state.selectedCompanies.keys()]);
-  const colors = top5.map(x => selKeys.has(x.c.jar_kodas) ? '#E9AC14' : '#A77A00');
-  if (others > 0) colors.push('#c9c2ae');
+  // Each top-5 company gets a distinct color from the brand palette.
+  // Selected companies get a bright-gold ring emphasis via border.
+  const PIE_PALETTE = ['#A77A00', '#AC6525', '#AEA730', '#E67C21', '#E9D32A'];
+  const colors = top5.map((_, i) => PIE_PALETTE[i % PIE_PALETTE.length]);
+  const borderColors = top5.map(x => selKeys.has(x.c.jar_kodas) ? '#E9AC14' : '#ffffff');
+  const borderWidths = top5.map(x => selKeys.has(x.c.jar_kodas) ? 3 : 2);
+  if (others > 0) {
+    colors.push('#c9c2ae');
+    borderColors.push('#ffffff');
+    borderWidths.push(2);
+  }
 
   const ctx = document.getElementById('pieChart').getContext('2d');
   chartInstances['pieChart'] = new Chart(ctx, {
     type: 'pie',
-    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#fff', borderWidth: 2 }] },
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: borderColors, borderWidth: borderWidths }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -1398,8 +1523,8 @@ function renderCompaniesInSectorTable(cohort) {
   const header = `
     <thead>
       <tr>
-        <th class="checkbox-cell"></th>
-        <th>Company</th>
+        <th class="checkbox-cell sticky-col-1"></th>
+        <th class="sticky-col-2">Company</th>
         ${yearsCols.map(y => `<th class="num">Rev ${y}</th>`).join('')}
         <th class="num">Growth 23→24</th>
         <th class="num">Growth 24→25</th>
@@ -1424,10 +1549,10 @@ function renderCompaniesInSectorTable(cohort) {
 
     body += `
       <tr class="${isSel ? 'selected-row' : ''}">
-        <td class="checkbox-cell">
+        <td class="checkbox-cell sticky-col-1">
           <input type="checkbox" ${isSel ? 'checked' : ''} onchange="toggleMsItem('company', ${JSON.stringify(c.jar_kodas).replace(/"/g,'&quot;')})">
         </td>
-        <td title="${escapeHtml(c.name)}">${escapeHtml(shortName(c.name, 40))}</td>
+        <td class="sticky-col-2" title="${escapeHtml(c.name)}">${escapeHtml(shortName(c.name, 40))}</td>
         ${revs.map(r => `<td class="num">${r==null ? '—' : fmtEUR(r)}</td>`).join('')}
         <td class="num ${growth23_24==null ? '' : (growth23_24>=0 ? 'pct-up' : 'pct-down')}">${growth23_24==null ? '—' : fmtPctSigned(growth23_24)}</td>
         <td class="num ${growth24_25==null ? '' : (growth24_25>=0 ? 'pct-up' : 'pct-down')}">${growth24_25==null ? '—' : fmtPctSigned(growth24_25)}</td>
@@ -1604,7 +1729,7 @@ function renderCompanyTabs() {
         <div class="kpi"><div class="kpi-label">Avg salary (€/mo)</div><div class="kpi-value">€${fmtEUR(curY.salary)}</div><div class="kpi-change flat">${FIN_LATEST_YEAR}</div></div>
       </div>
 
-      <h2 style="margin:18px 0 10px;font-size:15px;color:#111">Historical trends (2015–2025) — vs sector</h2>
+      <h2 class="section-heading">Historical trends (2015–${SODRA_LATEST_YEAR}) — vs sector</h2>
       <div class="chart-grid-2">
         <div class="chart-box">
           <h3>Revenue — ${escapeHtml(shortName(c.name,30))} vs sector total</h3>
@@ -1623,6 +1748,9 @@ function renderCompanyTabs() {
           <div class="chart-container"><canvas id="cSal_${c.jar_kodas}"></canvas></div>
         </div>
       </div>
+
+      <h2 class="section-heading">Full history — financials &amp; SODRA</h2>
+      <div class="tbl-wrap">${renderCompanyFullHistoryTable(c)}</div>
     `;
     wrap.appendChild(panel);
 
@@ -1633,6 +1761,40 @@ function renderCompanyTabs() {
     drawCompanyVsSectorLine('cRpe_' + c.jar_kodas, 'Revenue / employee (€)', sectorHist, hist, 'median_rpe', 'rev_per_emp', v => '€' + fmtEUR(v));
     drawCompanyVsSectorLine('cSal_' + c.jar_kodas, 'Avg salary (€/mo)', sectorHist, hist, 'median_sal', 'salary', v => '€' + fmtEUR(v));
   }
+}
+
+/* ==========================================================
+ *  Full company history table (financials + SODRA, per year)
+ * ========================================================== */
+function renderCompanyFullHistoryTable(c) {
+  const header = `
+    <thead>
+      <tr>
+        <th>Year</th>
+        <th class="num">Revenue (€)</th>
+        <th class="num">EBT (€)</th>
+        <th class="num">Net profit (€)</th>
+        <th class="num">EBT margin %</th>
+        <th class="num">Employees (avg)</th>
+        <th class="num">Revenue / employee (€)</th>
+        <th class="num">Avg salary (€/mo)</th>
+      </tr>
+    </thead>`;
+  const rows = YEARS.map(y => {
+    const d = getCompanyYearDerived(c.jar_kodas, y);
+    return `
+      <tr>
+        <td>${y}</td>
+        <td class="num">${d.revenue==null ? '—' : fmtEUR(d.revenue)}</td>
+        <td class="num">${d.ebt==null ? '—' : fmtEUR(d.ebt)}</td>
+        <td class="num">${d.net_profit==null ? '—' : fmtEUR(d.net_profit)}</td>
+        <td class="num">${d.ebt_margin==null ? '—' : fmtPct(d.ebt_margin)}</td>
+        <td class="num">${d.employees==null ? '—' : Math.round(d.employees).toLocaleString()}</td>
+        <td class="num">${d.rev_per_emp==null ? '—' : fmtEUR(d.rev_per_emp)}</td>
+        <td class="num">${d.salary==null ? '—' : fmtEUR(d.salary)}</td>
+      </tr>`;
+  }).join('');
+  return `<table>${header}<tbody>${rows}</tbody></table>`;
 }
 
 function drawCompanyVsSectorLine(canvasId, yLabel, sectorHist, compHist, sectorKey, companyKey, tickFmt) {
@@ -2232,6 +2394,27 @@ async function buildCompanySheet(wb, c, cohort, images) {
     [null, '#,##0', '#,##0']
   );
   sheet.addRow([]);
+
+  // --- Full history: financials + SODRA per year ---
+  addSectionHeader(sheet, 'FULL HISTORY — Financials &amp; SODRA per year', 8);
+  addTable(sheet,
+    ['Year', 'Revenue (€)', 'EBT (€)', 'Net profit (€)', 'EBT margin %', 'Employees (avg)', 'Revenue / employee (€)', 'Avg salary (€/mo)'],
+    YEARS.map(y => {
+      const d = getCompanyYearDerived(c.jar_kodas, y);
+      return [
+        y,
+        d.revenue,
+        d.ebt,
+        d.net_profit,
+        frac(d.ebt_margin),
+        d.employees,
+        d.rev_per_emp,
+        d.salary
+      ];
+    }),
+    [null, '#,##0', '#,##0', '#,##0', '0.0%', '#,##0', '#,##0', '#,##0']
+  );
+  sheet.addRow([]);
   sheet.addRow([]);
 
   // Charts
@@ -2292,7 +2475,11 @@ async function boot() {
     renderTags();
     applyFilters();  // initial pass: populates filteredCompanies and renders everything
     if (result.fromCache) {
-      showStatus('Loaded from cache. Clear cache to refresh.', 'success');
+      const age = Math.round((Date.now() - result.cachedAt) / 60000);
+      const ageStr = age < 1 ? 'just now' : (age < 60 ? `${age}m ago` : `${Math.round(age/60)}h ago`);
+      showStatus(`Loaded from cache (${ageStr}). Checking for updates…`, 'success');
+      // Kick off a background refresh (don't await — let UI stay responsive)
+      setTimeout(() => backgroundRefresh(), 500);
     } else {
       showStatus('Database loaded.', 'success');
     }
@@ -2304,7 +2491,8 @@ async function boot() {
 }
 
 // Expose a few helpers for dev
-window.clearCacheAndReload = () => { clearCache(); location.reload(); };
+window.clearCacheAndReload = async () => { await clearCache(); location.reload(); };
+window.forceRefresh = () => backgroundRefresh();
 
 document.addEventListener('DOMContentLoaded', boot);
 
