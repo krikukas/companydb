@@ -188,7 +188,7 @@ tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;col
   <div class="sidebar-section">
     <div class="sidebar-title">Search & Filter</div>
     <label>Company (name or JAR)</label>
-    <input type="text" id="f-search" placeholder="Search companies…" oninput="applyFilters()">
+    <input type="text" id="f-search" placeholder="Search companies…" oninput="onSearchInput()">
 
     <label>Sectors (EVRK name)</label>
     <div class="ms-wrap" id="sectorWrap">
@@ -722,6 +722,7 @@ function readFiltersFromUI() {
     const n = Number(v);
     return isNaN(n) ? null : n;
   };
+  // Search is a sidebar-list-only filter, NOT a cohort filter
   f.search = (document.getElementById('f-search')?.value || '').toLowerCase().trim();
   f.muni = document.getElementById('f-muni')?.value || '';
   f.year = parseInt(document.getElementById('f-year')?.value || '2025') || 2025;
@@ -732,9 +733,10 @@ function readFiltersFromUI() {
   f.minSal = g('f-sal-min'); f.maxSal = g('f-sal-max');
 }
 
+// True if any COHORT-narrowing filter is active (search excluded)
 function hasActiveFilters() {
   const f = state.filters;
-  return !!(f.search || f.muni ||
+  return !!(f.muni ||
     f.minEmp != null ||
     f.minRev != null || f.maxRev != null ||
     f.minEbt != null || f.maxEbt != null ||
@@ -745,7 +747,7 @@ function hasActiveFilters() {
 function activeFilterSummary() {
   const f = state.filters;
   const parts = [];
-  if (f.search) parts.push(`"${f.search}"`);
+  // Search excluded — it's a lookup, not a filter
   if (f.muni) parts.push(f.muni);
   if (f.minEmp != null) parts.push(`Emp ≥ ${f.minEmp}`);
   if (f.minRev != null || f.maxRev != null) {
@@ -771,17 +773,21 @@ function activeFilterSummary() {
   return parts;
 }
 
+function onSearchInput() {
+  // Lightweight: only re-reads the search box and re-renders the sidebar list.
+  // Does NOT recompute the cohort or redraw the Overview (cheap & fast).
+  state.filters.search = (document.getElementById('f-search')?.value || '').toLowerCase().trim();
+  renderCompanyList();
+}
+
 function applyFilters() {
   readFiltersFromUI();
   const f = state.filters;
   const y = f.year;
 
+  // COHORT filter: everything EXCEPT search (which is a sidebar-list filter).
+  // state.filteredCompanies is the "filtered universe" that drives the Overview cohort.
   state.filteredCompanies = state.allCompanies.filter(c => {
-    // Search by name or JAR
-    if (f.search) {
-      const hay = (c.name + ' ' + c.jar_kodas).toLowerCase();
-      if (!hay.includes(f.search)) return false;
-    }
     // Municipality
     if (f.muni && c.municipality !== f.muni) return false;
 
@@ -823,18 +829,28 @@ function renderCompanyList() {
   const count = document.getElementById('resultCount');
   if (!list || !count) return;
 
-  const total = state.filteredCompanies.length;
-  count.textContent = `${total.toLocaleString()} ${total === 1 ? 'company' : 'companies'}`;
+  // The sidebar list = cohort-filtered companies AND (optionally) narrowed by the search box
+  const search = state.filters.search;
+  const base = state.filteredCompanies;
+  const displayed = search
+    ? base.filter(c => (c.name + ' ' + c.jar_kodas).toLowerCase().includes(search))
+    : base;
+
+  const total = displayed.length;
+  const totalBase = base.length;
+  count.textContent = search
+    ? `${total.toLocaleString()} of ${totalBase.toLocaleString()}`
+    : `${totalBase.toLocaleString()} ${totalBase === 1 ? 'company' : 'companies'}`;
 
   // Sort by current year's revenue (desc), then name
   const y = state.filters.year;
-  const sorted = [...state.filteredCompanies].sort((a,b) => {
+  const sorted = [...displayed].sort((a,b) => {
     const ra = getCompanyYearData(a.jar_kodas, y).revenue || 0;
     const rb = getCompanyYearData(b.jar_kodas, y).revenue || 0;
     return rb - ra;
   });
 
-  // Render first 300 to avoid DOM bloat; user can use search to narrow
+  // Render first 300 to avoid DOM bloat
   const limit = 300;
   const rows = sorted.slice(0, limit).map(c => {
     const isSel = state.selectedCompanies.has(c.jar_kodas);
