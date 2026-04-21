@@ -293,9 +293,9 @@ const YEARS = [2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025];
 // Latest years are data-driven, recomputed after data loads.
 // Financial-based KPIs use FIN_LATEST_YEAR; SODRA-based KPIs use SODRA_LATEST_YEAR.
 let FIN_LATEST_YEAR = 2024;   // fallback
-let FIN_FIN_PREV_YEAR = 2023;
+let FIN_PREV_YEAR = 2023;
 let SODRA_LATEST_YEAR = 2025;
-let SODRA_FIN_PREV_YEAR = 2024;
+let SODRA_PREV_YEAR = 2024;
 
 function computeLatestYears() {
   // Scan financials to find the latest year where ANY company reports revenue or ebt
@@ -309,7 +309,7 @@ function computeLatestYears() {
     }
   }
   FIN_LATEST_YEAR = latestFin;
-  FIN_FIN_PREV_YEAR = prevFin;
+  FIN_PREV_YEAR = prevFin;
 
   // SODRA latest
   let latestSo = 2015, prevSo = 2014;
@@ -321,8 +321,8 @@ function computeLatestYears() {
     }
   }
   SODRA_LATEST_YEAR = latestSo;
-  SODRA_FIN_PREV_YEAR = prevSo;
-  console.log(`Latest financial year: ${FIN_LATEST_YEAR} (prev: ${FIN_FIN_PREV_YEAR}) | Latest SODRA year: ${SODRA_LATEST_YEAR} (prev: ${SODRA_FIN_PREV_YEAR})`);
+  SODRA_PREV_YEAR = prevSo;
+  console.log(`Latest financial year: ${FIN_LATEST_YEAR} (prev: ${FIN_PREV_YEAR}) | Latest SODRA year: ${SODRA_LATEST_YEAR} (prev: ${SODRA_PREV_YEAR})`);
 }
 
 /* ==========================================================
