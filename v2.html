@@ -32,9 +32,9 @@
 html,body{font-family:'Calibri','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--c-bg);color:var(--c-text);font-size:14px}
 
 /* ---- Top bar (dark earth with gold accent) ---- */
-.topbar{background:var(--c-earth);border-bottom:3px solid var(--c-gold);padding:10px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:100;color:#fff}
-.topbar h1{font-size:17px;font-weight:700;white-space:nowrap;color:#fff;letter-spacing:.06em;text-transform:uppercase}
-.topbar h1 .sub{color:var(--c-gold-bright);font-weight:400;font-size:12px;letter-spacing:.02em;text-transform:none;margin-left:6px}
+.topbar{background:var(--c-earth);border-bottom:3px solid var(--c-gold);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:100;color:#fff}
+.brand-logo{height:30px;width:auto;display:block}
+.topbar-sub{color:var(--c-gold-bright);font-weight:400;font-size:12px;letter-spacing:.04em;font-style:italic;opacity:.85}
 .topbar .spacer{flex:1}
 
 .btn{padding:7px 14px;border:1px solid var(--c-border);border-radius:4px;font-size:13px;background:#fff;cursor:pointer;white-space:nowrap;font-weight:600;font-family:inherit;color:var(--c-text);transition:all .12s ease}
@@ -61,8 +61,38 @@ html,body{font-family:'Calibri','Segoe UI',-apple-system,BlinkMacSystemFont,sans
 .ms-option input[type=checkbox]{margin:0;cursor:pointer;accent-color:var(--c-gold)}
 .ms-option .opt-meta{color:#9a9480;font-size:11px;margin-left:auto;white-space:nowrap}
 
-/* ---- Main layout ---- */
-.main{padding:18px;max-width:1700px;margin:0 auto}
+/* ---- Main layout: sidebar + content ---- */
+.main-layout{display:flex;min-height:calc(100vh - 60px);background:var(--c-bg)}
+.sidebar{width:300px;flex-shrink:0;background:var(--c-surface);border-right:1px solid var(--c-border);display:flex;flex-direction:column;overflow:hidden;position:sticky;top:60px;height:calc(100vh - 60px)}
+.sidebar-section{padding:14px 14px 8px;border-bottom:1px solid var(--c-border)}
+.sidebar-section:last-child{border-bottom:none;flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0}
+.sidebar-title{font-size:10.5px;font-weight:700;color:var(--c-text-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.sidebar label{font-size:11px;color:var(--c-text-soft);font-weight:600;text-transform:uppercase;letter-spacing:.04em;display:block;margin:10px 0 4px}
+.sidebar label:first-child{margin-top:0}
+.sidebar input[type=text],.sidebar input[type=number],.sidebar select{width:100%;padding:6px 9px;border:1px solid var(--c-border);border-radius:3px;font-size:13px;background:#fff;color:var(--c-text);font-family:inherit}
+.sidebar input:focus,.sidebar select:focus{outline:none;border-color:var(--c-gold);box-shadow:0 0 0 2px rgba(167,122,0,.12)}
+.filter-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.sidebar .ms-wrap{min-width:0;max-width:none;flex:none;width:100%}
+.sidebar .ms-input{padding:3px 5px;min-height:32px}
+.sidebar .ms-text{font-size:12.5px}
+.sidebar-watchlist{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--c-text);cursor:pointer;margin-top:10px;user-select:none}
+.sidebar-watchlist input{accent-color:var(--c-gold);cursor:pointer}
+.sidebar-btn-row{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px}
+.sidebar-btn-row .result-count{font-size:12px;color:var(--c-text-soft);font-weight:600}
+.sidebar-btn-row .clear-btn{background:transparent;border:1px solid var(--c-border);color:var(--c-text-soft);padding:4px 10px;font-size:11px;border-radius:3px;cursor:pointer;font-family:inherit;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.sidebar-btn-row .clear-btn:hover{color:var(--c-earth);border-color:var(--c-earth)}
+
+.company-list{flex:1;overflow-y:auto;border-top:1px solid var(--c-border)}
+.company-item{padding:8px 14px;cursor:pointer;border-bottom:1px solid #f5f2e8;display:flex;align-items:flex-start;gap:8px;font-size:12.5px;transition:background .08s}
+.company-item:hover{background:#faf8f0}
+.company-item.selected{background:rgba(233,172,20,.14)}
+.company-item input{margin-top:3px;flex-shrink:0;accent-color:var(--c-gold);cursor:pointer}
+.company-item .ci-body{flex:1;min-width:0;overflow:hidden}
+.company-item .ci-name{color:var(--c-earth);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.company-item .ci-meta{color:var(--c-text-soft);font-size:11px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---- Main content area ---- */
+.main{padding:18px;flex:1;min-width:0;overflow-x:auto}
 
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--c-border);margin-bottom:18px;overflow-x:auto;scrollbar-width:thin}
 .tab{padding:11px 18px;cursor:pointer;font-size:13px;font-weight:600;color:var(--c-text-soft);border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap;background:transparent;border-top:none;border-left:none;border-right:none;font-family:inherit;letter-spacing:.02em;transition:color .12s}
@@ -143,30 +173,87 @@ tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;col
 </div>
 
 <div class="topbar">
-  <h1>Confidentus<span class="sub">CompanyDB · Sector analysis</span></h1>
-
-  <!-- Sectors multi-select -->
-  <div class="ms-wrap" id="sectorWrap">
-    <div class="ms-input" id="sectorInput" onclick="openDropdown('sector')">
-      <span id="sectorTags"></span>
-      <input type="text" class="ms-text" id="sectorSearch" placeholder="Search sectors (EVRK)…" oninput="filterMsOptions('sector')" onfocus="openDropdown('sector')">
-    </div>
-    <div class="ms-dropdown" id="sectorDropdown"></div>
-  </div>
-
-  <!-- Companies multi-select -->
-  <div class="ms-wrap" id="companyWrap">
-    <div class="ms-input" id="companyInput" onclick="openDropdown('company')">
-      <span id="companyTags"></span>
-      <input type="text" class="ms-text" id="companySearch" placeholder="Search companies…" oninput="filterMsOptions('company')" onfocus="openDropdown('company')">
-    </div>
-    <div class="ms-dropdown" id="companyDropdown"></div>
-  </div>
+  <img class="brand-logo" src="data:image/png;base64,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" alt="Confidentus">
+  <span class="topbar-sub">CompanyDB · Sector analysis</span>
 
   <div class="spacer"></div>
   <button class="btn btn-clear" onclick="clearAll()">Clear all</button>
   <button class="btn btn-primary" onclick="exportExcel()">Export Excel</button>
 </div>
+
+<div class="main-layout">
+
+<aside class="sidebar">
+
+  <div class="sidebar-section">
+    <div class="sidebar-title">Search & Filter</div>
+    <label>Company (name or JAR)</label>
+    <input type="text" id="f-search" placeholder="Search companies…" oninput="applyFilters()">
+
+    <label>Sectors (EVRK name)</label>
+    <div class="ms-wrap" id="sectorWrap">
+      <div class="ms-input" id="sectorInput" onclick="openDropdown('sector')">
+        <span id="sectorTags"></span>
+        <input type="text" class="ms-text" id="sectorSearch" placeholder="Search sectors…" oninput="filterMsOptions('sector')" onfocus="openDropdown('sector')">
+      </div>
+      <div class="ms-dropdown" id="sectorDropdown"></div>
+    </div>
+
+    <label>Municipality</label>
+    <select id="f-muni" onchange="applyFilters()">
+      <option value="">All municipalities</option>
+    </select>
+
+    <label>Filter year</label>
+    <select id="f-year" onchange="applyFilters()">
+      <option value="2025" selected>2025</option>
+      <option value="2024">2024</option>
+      <option value="2023">2023</option>
+      <option value="2022">2022</option>
+      <option value="2021">2021</option>
+      <option value="2020">2020</option>
+    </select>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-title">Financial filters</div>
+    <label>Min employees</label>
+    <input type="number" id="f-emp" placeholder="e.g. 10" min="0" oninput="applyFilters()">
+
+    <label>Revenue (€)</label>
+    <div class="filter-row">
+      <input type="number" id="f-rev-min" placeholder="Min" oninput="applyFilters()">
+      <input type="number" id="f-rev-max" placeholder="Max" oninput="applyFilters()">
+    </div>
+
+    <label>EBT (€)</label>
+    <div class="filter-row">
+      <input type="number" id="f-ebt-min" placeholder="Min" oninput="applyFilters()">
+      <input type="number" id="f-ebt-max" placeholder="Max" oninput="applyFilters()">
+    </div>
+
+    <label>EBT margin %</label>
+    <div class="filter-row">
+      <input type="number" id="f-margin-min" placeholder="Min %" oninput="applyFilters()">
+      <input type="number" id="f-margin-max" placeholder="Max %" oninput="applyFilters()">
+    </div>
+
+    <label>Avg salary (€/mo)</label>
+    <div class="filter-row">
+      <input type="number" id="f-sal-min" placeholder="Min" oninput="applyFilters()">
+      <input type="number" id="f-sal-max" placeholder="Max" oninput="applyFilters()">
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-btn-row">
+      <span class="result-count" id="resultCount">—</span>
+      <button class="clear-btn" onclick="clearFilters()">Clear filters</button>
+    </div>
+    <div class="company-list" id="companyList"></div>
+  </div>
+
+</aside>
 
 <div class="main">
   <div id="statusBar" class="status-bar" style="display:none"></div>
@@ -181,13 +268,15 @@ tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;col
   <div class="tab-panel active" id="tab-overview">
     <div id="overviewContent">
       <div class="empty-state">
-        Select one or more sectors or companies above to see the sector overview.
+        Use the sidebar to select one or more sectors, or tick companies from the list.
       </div>
     </div>
   </div>
 
   <!-- Company detail tabs inserted dynamically -->
   <div id="companyTabPanels"></div>
+
+</div>
 
 </div>
 
@@ -210,10 +299,22 @@ const PREV_YEAR = 2024;
 const state = {
   allCompanies: [],          // [{jar_kodas, name, evrk_code, evrk_name, ...}]
   sectorOptions: [],         // [{evrk_code, evrk_name, count}]
+  municipalities: [],        // ['Vilnius', 'Kaunas', ...]
   financials: {},            // {jar_kodas: [{year, revenue, ebt, ...}, ...]}
   sodra: {},                 // {jar_kodas: {avg_employees_2024, avg_salary_2024, ...}}
   selectedSectors: new Set(),// evrk_codes selected
   selectedCompanies: new Map(), // jar_kodas -> {jar_kodas, name, evrk_code, evrk_name}
+  filters: {
+    search: '',
+    muni: '',
+    year: 2025,
+    minEmp: null,
+    minRev: null, maxRev: null,
+    minEbt: null, maxEbt: null,
+    minMargin: null, maxMargin: null,
+    minSal: null, maxSal: null
+  },
+  filteredCompanies: [],     // the cohort after applying all filters, driving Overview
   showAllInTable: false,     // toggled by "show more"
   currentTab: 'overview',
   dataLoaded: false
@@ -301,21 +402,24 @@ async function loadAllData() {
     state.financials = cached.financials;
     state.sodra = cached.sodra;
     buildSectorOptions();
+    buildMunicipalityOptions();
     state.dataLoaded = true;
     return { fromCache: true };
   }
 
   setLoading('Loading companies…');
-  const companies = await sbFetchAll('companies?select=jar_kodas,company_name,evrk_code,evrk_name,legal_form');
+  const companies = await sbFetchAll('companies?select=jar_kodas,company_name,evrk_code,evrk_name,legal_form,municipality');
   // Normalize to our internal shape: .name field for UI
   state.allCompanies = companies.map(c => ({
     jar_kodas: c.jar_kodas,
     name: c.company_name || '',
     evrk_code: c.evrk_code,
     evrk_name: c.evrk_name,
-    legal_form: c.legal_form
+    legal_form: c.legal_form,
+    municipality: c.municipality || ''
   }));
   buildSectorOptions();
+  buildMunicipalityOptions();
 
   setLoading(`Loading financials (${YEARS.length} years)…`);
   const fins = await sbFetchAll('financials?select=jar_kodas,fin_year,revenue,ebt,net_profit');
@@ -376,6 +480,17 @@ function buildSectorOptions() {
   state.sectorOptions = Object.values(m).sort((a,b) => b.count - a.count);
 }
 
+function buildMunicipalityOptions() {
+  const s = new Set();
+  for (const c of state.allCompanies) if (c.municipality) s.add(c.municipality);
+  state.municipalities = [...s].sort();
+  const sel = document.getElementById('f-muni');
+  if (sel) {
+    sel.innerHTML = '<option value="">All municipalities</option>' +
+      state.municipalities.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+  }
+}
+
 function setLoading(msg) {
   const el = document.getElementById('loadingMsg');
   if (el) el.textContent = msg;
@@ -401,6 +516,7 @@ function showStatus(msg, kind) {
 function renderMsOptions(kind) {
   const dd = document.getElementById(kind + 'Dropdown');
   const searchEl = document.getElementById(kind + 'Search');
+  if (!dd || !searchEl) return;  // UI for this kind doesn't exist
   const q = (searchEl.value || '').toLowerCase().trim();
 
   let items;
@@ -474,25 +590,30 @@ function toggleMsItem(kind, key) {
   }
   renderTags(kind);
   renderMsOptions(kind);
+  if (kind === 'company') renderCompanyList();
   refreshUI();
 }
 
 function renderTags(kind) {
   if (kind === 'sector' || !kind) {
     const tagWrap = document.getElementById('sectorTags');
-    const tags = [...state.selectedSectors].map(k => {
-      const s = state.sectorOptions.find(x => x.evrk_code === k);
-      const label = s ? s.evrk_name : k;
-      return `<span class="ms-tag"><span class="tag-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span><span class="tag-x" onclick="event.stopPropagation(); toggleMsItem('sector', ${JSON.stringify(k).replace(/"/g,'&quot;')})">×</span></span>`;
-    }).join('');
-    tagWrap.innerHTML = tags;
+    if (tagWrap) {
+      const tags = [...state.selectedSectors].map(k => {
+        const s = state.sectorOptions.find(x => x.evrk_code === k);
+        const label = s ? s.evrk_name : k;
+        return `<span class="ms-tag"><span class="tag-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span><span class="tag-x" onclick="event.stopPropagation(); toggleMsItem('sector', ${JSON.stringify(k).replace(/"/g,'&quot;')})">×</span></span>`;
+      }).join('');
+      tagWrap.innerHTML = tags;
+    }
   }
   if (kind === 'company' || !kind) {
     const tagWrap = document.getElementById('companyTags');
-    const tags = [...state.selectedCompanies.values()].map(c =>
-      `<span class="ms-tag"><span class="tag-label" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span><span class="tag-x" onclick="event.stopPropagation(); toggleMsItem('company', ${JSON.stringify(c.jar_kodas).replace(/"/g,'&quot;')})">×</span></span>`
-    ).join('');
-    tagWrap.innerHTML = tags;
+    if (tagWrap) {
+      const tags = [...state.selectedCompanies.values()].map(c =>
+        `<span class="ms-tag"><span class="tag-label" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span><span class="tag-x" onclick="event.stopPropagation(); toggleMsItem('company', ${JSON.stringify(c.jar_kodas).replace(/"/g,'&quot;')})">×</span></span>`
+      ).join('');
+      tagWrap.innerHTML = tags;
+    }
   }
 }
 
@@ -501,8 +622,8 @@ function clearAll() {
   state.selectedCompanies.clear();
   state.showAllInTable = false;
   renderTags();
-  refreshUI();
-  showStatus('Selection cleared', 'success');
+  clearFilters();  // also resets filter UI and reruns applyFilters which calls refreshUI
+  showStatus('All selections and filters cleared', 'success');
 }
 
 /* ==========================================================
@@ -589,22 +710,189 @@ function sum(arr) {
 }
 
 /* ==========================================================
- *  Sector cohort logic
+ *  Filter logic
+ * ========================================================== */
+function readFiltersFromUI() {
+  const f = state.filters;
+  const g = id => {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    const v = el.value;
+    if (v === '' || v == null) return null;
+    const n = Number(v);
+    return isNaN(n) ? null : n;
+  };
+  f.search = (document.getElementById('f-search')?.value || '').toLowerCase().trim();
+  f.muni = document.getElementById('f-muni')?.value || '';
+  f.year = parseInt(document.getElementById('f-year')?.value || '2025') || 2025;
+  f.minEmp = g('f-emp');
+  f.minRev = g('f-rev-min'); f.maxRev = g('f-rev-max');
+  f.minEbt = g('f-ebt-min'); f.maxEbt = g('f-ebt-max');
+  f.minMargin = g('f-margin-min'); f.maxMargin = g('f-margin-max');
+  f.minSal = g('f-sal-min'); f.maxSal = g('f-sal-max');
+}
+
+function hasActiveFilters() {
+  const f = state.filters;
+  return !!(f.search || f.muni ||
+    f.minEmp != null ||
+    f.minRev != null || f.maxRev != null ||
+    f.minEbt != null || f.maxEbt != null ||
+    f.minMargin != null || f.maxMargin != null ||
+    f.minSal != null || f.maxSal != null);
+}
+
+function activeFilterSummary() {
+  const f = state.filters;
+  const parts = [];
+  if (f.search) parts.push(`"${f.search}"`);
+  if (f.muni) parts.push(f.muni);
+  if (f.minEmp != null) parts.push(`Emp ≥ ${f.minEmp}`);
+  if (f.minRev != null || f.maxRev != null) {
+    const p = f.minRev != null ? `€${fmtEUR(f.minRev)}` : '';
+    const q = f.maxRev != null ? `€${fmtEUR(f.maxRev)}` : '';
+    parts.push(`Revenue ${p}${p && q ? '—' : ''}${q}`);
+  }
+  if (f.minEbt != null || f.maxEbt != null) {
+    const p = f.minEbt != null ? `€${fmtEUR(f.minEbt)}` : '';
+    const q = f.maxEbt != null ? `€${fmtEUR(f.maxEbt)}` : '';
+    parts.push(`EBT ${p}${p && q ? '—' : ''}${q}`);
+  }
+  if (f.minMargin != null || f.maxMargin != null) {
+    const p = f.minMargin != null ? `${f.minMargin}%` : '';
+    const q = f.maxMargin != null ? `${f.maxMargin}%` : '';
+    parts.push(`Margin ${p}${p && q ? '—' : ''}${q}`);
+  }
+  if (f.minSal != null || f.maxSal != null) {
+    const p = f.minSal != null ? `€${fmtEUR(f.minSal)}` : '';
+    const q = f.maxSal != null ? `€${fmtEUR(f.maxSal)}` : '';
+    parts.push(`Salary ${p}${p && q ? '—' : ''}${q}`);
+  }
+  return parts;
+}
+
+function applyFilters() {
+  readFiltersFromUI();
+  const f = state.filters;
+  const y = f.year;
+
+  state.filteredCompanies = state.allCompanies.filter(c => {
+    // Search by name or JAR
+    if (f.search) {
+      const hay = (c.name + ' ' + c.jar_kodas).toLowerCase();
+      if (!hay.includes(f.search)) return false;
+    }
+    // Municipality
+    if (f.muni && c.municipality !== f.muni) return false;
+
+    // Financials for selected year
+    const d = getCompanyYearDerived(c.jar_kodas, y);
+
+    if (f.minEmp != null && (d.employees == null || d.employees < f.minEmp)) return false;
+    if (f.minRev != null && (d.revenue == null || d.revenue < f.minRev)) return false;
+    if (f.maxRev != null && (d.revenue == null || d.revenue > f.maxRev)) return false;
+    if (f.minEbt != null && (d.ebt == null || d.ebt < f.minEbt)) return false;
+    if (f.maxEbt != null && (d.ebt == null || d.ebt > f.maxEbt)) return false;
+    if (f.minMargin != null && (d.ebt_margin == null || d.ebt_margin < f.minMargin)) return false;
+    if (f.maxMargin != null && (d.ebt_margin == null || d.ebt_margin > f.maxMargin)) return false;
+    if (f.minSal != null && (d.salary == null || d.salary < f.minSal)) return false;
+    if (f.maxSal != null && (d.salary == null || d.salary > f.maxSal)) return false;
+
+    return true;
+  });
+
+  renderCompanyList();
+  refreshUI();
+}
+
+function clearFilters() {
+  ['f-search','f-emp','f-rev-min','f-rev-max','f-ebt-min','f-ebt-max',
+   'f-margin-min','f-margin-max','f-sal-min','f-sal-max'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const muni = document.getElementById('f-muni'); if (muni) muni.value = '';
+  const yr = document.getElementById('f-year'); if (yr) yr.value = '2025';
+  applyFilters();
+}
+
+/* ==========================================================
+ *  Company list in sidebar
+ * ========================================================== */
+function renderCompanyList() {
+  const list = document.getElementById('companyList');
+  const count = document.getElementById('resultCount');
+  if (!list || !count) return;
+
+  const total = state.filteredCompanies.length;
+  count.textContent = `${total.toLocaleString()} ${total === 1 ? 'company' : 'companies'}`;
+
+  // Sort by current year's revenue (desc), then name
+  const y = state.filters.year;
+  const sorted = [...state.filteredCompanies].sort((a,b) => {
+    const ra = getCompanyYearData(a.jar_kodas, y).revenue || 0;
+    const rb = getCompanyYearData(b.jar_kodas, y).revenue || 0;
+    return rb - ra;
+  });
+
+  // Render first 300 to avoid DOM bloat; user can use search to narrow
+  const limit = 300;
+  const rows = sorted.slice(0, limit).map(c => {
+    const isSel = state.selectedCompanies.has(c.jar_kodas);
+    const rev = getCompanyYearData(c.jar_kodas, y).revenue;
+    const revStr = rev != null ? `€${fmtEUR(rev)}` : '—';
+    return `
+      <div class="company-item ${isSel ? 'selected' : ''}" onclick="toggleCompanyFromList('${c.jar_kodas}', event)">
+        <input type="checkbox" ${isSel ? 'checked' : ''} onclick="event.stopPropagation(); toggleCompanyFromList('${c.jar_kodas}', event)">
+        <div class="ci-body">
+          <div class="ci-name" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</div>
+          <div class="ci-meta">${escapeHtml(c.evrk_name || '')} · ${revStr}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const moreNotice = total > limit ? `<div style="padding:10px 14px;text-align:center;color:var(--c-text-soft);font-size:11px;font-style:italic">Showing top ${limit} by revenue. Use search to narrow.</div>` : '';
+  list.innerHTML = rows + moreNotice;
+}
+
+function toggleCompanyFromList(jar, event) {
+  if (event) event.stopPropagation();
+  if (state.selectedCompanies.has(jar)) {
+    state.selectedCompanies.delete(jar);
+  } else {
+    const c = state.allCompanies.find(x => x.jar_kodas === jar);
+    if (c) state.selectedCompanies.set(jar, c);
+  }
+  renderCompanyList();
+  renderTags('company');
+  refreshUI();
+}
+
+/* ==========================================================
+ *  Sector cohort logic (filter-aware)
+ *  Cohort = filtered companies ∩ (selected sectors ∪ sectors of selected companies)
+ *  If no sectors selected and no companies selected: empty (prompt to pick)
+ *  If sectors selected but no companies: filtered ∩ those sectors
+ *  If companies selected but no sectors: filtered ∩ sectors of those companies
  * ========================================================== */
 function getCohort() {
-  // Returns: { companies: [...], sectors: [evrk_code...], sectorNames: [...] }
-  // Cohort = all companies whose evrk_code is in selectedSectors OR any selected company's evrk
-  const selSectors = new Set(state.selectedSectors);
+  const sectorKeys = new Set(state.selectedSectors);
   for (const c of state.selectedCompanies.values()) {
-    if (c.evrk_code) selSectors.add(c.evrk_code);
+    if (c.evrk_code) sectorKeys.add(c.evrk_code);
   }
-  const companies = state.allCompanies.filter(c => selSectors.has(c.evrk_code));
+  if (!sectorKeys.size) return { companies: [], sectors: [], sectorNames: [], filtered: false };
+
+  // Start from the filtered cohort (or all companies if no filters and no filteredCompanies populated)
+  const base = (state.filteredCompanies.length || hasActiveFilters())
+    ? state.filteredCompanies
+    : state.allCompanies;
+
+  const companies = base.filter(c => sectorKeys.has(c.evrk_code));
   const sectorNames = [];
-  for (const k of selSectors) {
+  for (const k of sectorKeys) {
     const s = state.sectorOptions.find(x => x.evrk_code === k);
     if (s) sectorNames.push(s.evrk_name);
   }
-  return { companies, sectors: [...selSectors], sectorNames };
+  return { companies, sectors: [...sectorKeys], sectorNames, filtered: hasActiveFilters() };
 }
 
 function getCompanyYearData(jar, year) {
@@ -689,7 +977,12 @@ function renderOverview() {
   const cohort = getCohort();
 
   if (!cohort.companies.length) {
-    wrap.innerHTML = `<div class="empty-state">Select one or more sectors or companies above to see the sector overview.</div>`;
+    const reason = cohort.sectorNames.length === 0
+      ? 'Pick a sector from the sidebar, or tick companies from the list below.'
+      : (cohort.filtered
+          ? 'No companies match the current filters in the selected sector(s). Relax filters to see results.'
+          : 'No companies found in the selected sector(s).');
+    wrap.innerHTML = `<div class="empty-state">${reason}</div>`;
     return;
   }
 
@@ -705,17 +998,22 @@ function renderOverview() {
     ? `<div class="selected-companies-line"><b>Selected:</b> ${selectedNames.map(escapeHtml).join(' · ')}</div>`
     : '';
 
-  const sectorTitle = cohort.sectorNames.length === 1
+  const sectorTitleBase = cohort.sectorNames.length === 1
     ? cohort.sectorNames[0]
     : `${cohort.sectorNames.length} merged sectors`;
+  const sectorTitle = cohort.filtered ? `${sectorTitleBase} — filtered` : sectorTitleBase;
   const sectorSubtitle = cohort.sectorNames.length > 1
     ? `<div class="sector-names">${cohort.sectorNames.map(escapeHtml).join(' · ')}</div>`
+    : '';
+  const filterSummary = cohort.filtered
+    ? `<div class="sector-names"><b>Filters:</b> ${activeFilterSummary().map(escapeHtml).join(' · ')}</div>`
     : '';
 
   wrap.innerHTML = `
     <div class="overview-header">
       <div class="title">${escapeHtml(sectorTitle)}</div>
       ${sectorSubtitle}
+      ${filterSummary}
       ${selectedLine}
     </div>
 
@@ -1916,7 +2214,7 @@ async function boot() {
     const result = await loadAllData();
     hideLoading();
     renderTags();
-    refreshUI();
+    applyFilters();  // initial pass: populates filteredCompanies and renders everything
     if (result.fromCache) {
       showStatus('Loaded from cache. Clear cache to refresh.', 'success');
     } else {
