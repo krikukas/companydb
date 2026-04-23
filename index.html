@@ -432,6 +432,129 @@ async function sbFetchAll(path, onProgress) {
 }
 
 /* ==========================================================
+ *  SODRA lazy-loader
+ *
+ *  SODRA is huge (~9M rows) so we don't load it all upfront. Instead, we fetch
+ *  it on-demand for the specific JAR codes a view needs. Results are cached
+ *  in state.sodra and persisted to IndexedDB so a JAR is only ever fetched once.
+ * ========================================================== */
+// URL length limit protection: Supabase rejects URLs >~8KB.
+// A JAR code is ~9 chars, plus comma. So ~500 JAR codes per batch = ~5KB URL.
+const SODRA_BATCH_SIZE = 500;
+
+// Tracks which JAR codes have already been fetched (even if they have no SODRA data,
+// we don't want to refetch). Separate from state.sodra which only holds JARs with data.
+const sodraFetchedJars = new Set();
+
+// Rebuild sodraFetchedJars from cached state on startup
+function seedSodraFetchedFromState() {
+  for (const jar in state.sodra) sodraFetchedJars.add(jar);
+}
+
+// Inflight promises, keyed by JAR code, so concurrent callers for the same JAR
+// share a single fetch instead of duplicating it.
+const sodraInflight = new Map();
+
+// Fetch SODRA for a specific set of JAR codes (deduped against already-loaded).
+// Returns when all requested JARs have their data in state.sodra (or confirmed absent).
+// onProgress(loaded, total) is optional.
+async function ensureSodraLoaded(jarCodes, onProgress) {
+  // Filter out JARs already fetched or currently being fetched
+  const toFetch = [];
+  const pendingPromises = [];
+  for (const jar of jarCodes) {
+    if (!jar) continue;
+    if (sodraFetchedJars.has(jar)) continue;
+    if (sodraInflight.has(jar)) {
+      pendingPromises.push(sodraInflight.get(jar));
+      continue;
+    }
+    toFetch.push(jar);
+  }
+  // Nothing to do? Just await anything in flight, then return.
+  if (toFetch.length === 0) {
+    if (pendingPromises.length) await Promise.all(pendingPromises);
+    return;
+  }
+
+  // Batch the JARs we need to fetch. Register each batch's promise in sodraInflight
+  // so concurrent callers can piggyback.
+  const batches = [];
+  for (let i = 0; i < toFetch.length; i += SODRA_BATCH_SIZE) {
+    batches.push(toFetch.slice(i, i + SODRA_BATCH_SIZE));
+  }
+
+  const batchPromises = batches.map((batch, idx) => {
+    const promise = (async () => {
+      const jarFilter = `in.(${batch.join(',')})`;
+      const path = `sodra_workforce?select=jar_kodas,period_year,employees_avg,avg_salary&jar_kodas=${encodeURIComponent(jarFilter)}&order=jar_kodas,period_year`;
+      // sbFetchAll paginates beyond PAGE_SIZE automatically
+      const rows = await sbFetchAll(path);
+
+      // Aggregate to year-level per JAR
+      const sByCompanyYear = {};
+      for (const s of rows) {
+        if (!s.period_year) continue;
+        const y = s.period_year;
+        const k = s.jar_kodas;
+        if (!sByCompanyYear[k]) sByCompanyYear[k] = {};
+        if (!sByCompanyYear[k][y]) sByCompanyYear[k][y] = { emps: [], sals: [] };
+        if (s.employees_avg != null) sByCompanyYear[k][y].emps.push(s.employees_avg);
+        if (s.avg_salary != null && s.avg_salary > 0) sByCompanyYear[k][y].sals.push(s.avg_salary);
+      }
+
+      // Install into state.sodra (averages per year)
+      for (const k in sByCompanyYear) {
+        if (!state.sodra[k]) state.sodra[k] = {};
+        for (const y in sByCompanyYear[k]) {
+          const { emps, sals } = sByCompanyYear[k][y];
+          state.sodra[k][y] = {
+            avg_employees: emps.length ? emps.reduce((a,b)=>a+b,0)/emps.length : null,
+            avg_salary:    sals.length ? sals.reduce((a,b)=>a+b,0)/sals.length : null
+          };
+        }
+      }
+
+      // Mark all requested JARs as fetched (even ones with no SODRA data at all,
+      // so we don't re-query them next time)
+      for (const jar of batch) sodraFetchedJars.add(jar);
+    })();
+    // Register each JAR in this batch as inflight
+    for (const jar of batch) sodraInflight.set(jar, promise);
+    promise.finally(() => {
+      for (const jar of batch) sodraInflight.delete(jar);
+    });
+    return promise;
+  });
+
+  // Progress reporting
+  if (onProgress) {
+    let done = 0;
+    const total = batches.length;
+    for (const p of batchPromises) {
+      p.then(() => { done += 1; onProgress(done, total); }).catch(()=>{});
+    }
+  }
+
+  // Wait for all batches + any pre-existing inflight promises for overlapping JARs
+  await Promise.all([...batchPromises, ...pendingPromises]);
+
+  // Persist the enriched state.sodra to cache. We throttle writes since many cohort
+  // views can trigger ensureSodraLoaded back-to-back.
+  scheduleCacheSave();
+
+  // Recompute SODRA_LATEST_YEAR now that we have more data
+  computeLatestYears();
+}
+
+// Throttled cache writes: avoid writing on every ensureSodraLoaded call
+let cacheSaveTimer = null;
+function scheduleCacheSave() {
+  if (cacheSaveTimer) clearTimeout(cacheSaveTimer);
+  cacheSaveTimer = setTimeout(() => { saveCache().catch(e => console.warn('Cache save failed', e)); }, 1500);
+}
+
+/* ==========================================================
  *  Cache — IndexedDB (no size limit for our 30MB payload)
  * ========================================================== */
 const IDB_NAME = 'companydb_v2';
@@ -521,8 +644,9 @@ async function loadAllData() {
   if (cached) {
     state.allCompanies = cached.allCompanies;
     state.financials = cached.financials;
-    state.sodra = cached.sodra;
+    state.sodra = cached.sodra || {};
     state.lastRefreshTs = cached.ts;
+    seedSodraFetchedFromState();
     buildSectorOptions();
     buildMunicipalityOptions();
     computeLatestYears();
@@ -586,37 +710,15 @@ async function fetchAndInstallData(background) {
     financialsByJar[k].sort((a,b) => a.year - b.year);
   }
 
-  setMsg('Loading SODRA workforce data…');
-  const sodra = await sbFetchAll(
-    'sodra_workforce?select=jar_kodas,period_year,employees_avg,avg_salary&order=jar_kodas,period_year',
-    progressFor('Loading SODRA')
-  );
-  const sByCompanyYear = {};
-  for (const s of sodra) {
-    if (!s.period_year) continue;
-    const y = s.period_year;
-    const k = s.jar_kodas;
-    if (!sByCompanyYear[k]) sByCompanyYear[k] = {};
-    if (!sByCompanyYear[k][y]) sByCompanyYear[k][y] = { emps: [], sals: [] };
-    if (s.employees_avg != null) sByCompanyYear[k][y].emps.push(s.employees_avg);
-    if (s.avg_salary != null && s.avg_salary > 0) sByCompanyYear[k][y].sals.push(s.avg_salary);
-  }
-  const sodraByJar = {};
-  for (const k in sByCompanyYear) {
-    sodraByJar[k] = {};
-    for (const y in sByCompanyYear[k]) {
-      const {emps, sals} = sByCompanyYear[k][y];
-      sodraByJar[k][y] = {
-        avg_employees: emps.length ? emps.reduce((a,b)=>a+b,0)/emps.length : null,
-        avg_salary: sals.length ? sals.reduce((a,b)=>a+b,0)/sals.length : null
-      };
-    }
-  }
+  // SODRA is NOT fetched upfront anymore. It's lazy-loaded per cohort via
+  // ensureSodraLoaded() when a sector/company view actually needs it.
+  // This drops cold-load time from ~15 min to ~30 sec.
 
   // Install
   state.allCompanies = normalizedCompanies;
   state.financials = financialsByJar;
-  state.sodra = sodraByJar;
+  // Keep any already-cached SODRA from IndexedDB; don't clobber it on background refresh
+  if (!state.sodra || typeof state.sodra !== 'object') state.sodra = {};
   state.lastRefreshTs = Date.now();
   buildSectorOptions();
   buildMunicipalityOptions();
@@ -649,13 +751,13 @@ async function backgroundRefresh() {
   }
 }
 
-// Cheap way to tell if the dataset changed: total rows + latest year stamps
+// Cheap way to tell if the dataset changed: total rows + latest year stamps.
+// SODRA is now lazy-loaded so its row count varies with user activity (not with
+// server-side changes) — we intentionally exclude it from the fingerprint.
 function datasetFingerprint() {
   let finRows = 0;
   for (const k in state.financials) finRows += state.financials[k].length;
-  let sodraRows = 0;
-  for (const k in state.sodra) sodraRows += Object.keys(state.sodra[k]).length;
-  return `${state.allCompanies.length}|${finRows}|${sodraRows}|${FIN_LATEST_YEAR}|${SODRA_LATEST_YEAR}`;
+  return `${state.allCompanies.length}|${finRows}|${FIN_LATEST_YEAR}`;
 }
 
 function showRefreshIndicator(on) {
@@ -668,6 +770,26 @@ function showRefreshIndicator(on) {
     document.body.appendChild(el);
   }
   el.style.display = on ? 'flex' : 'none';
+}
+
+// Lightweight transient toasts, e.g. "Loading workforce data…"
+// Returns an id; pass it to hideToast() to remove.
+let _toastCounter = 0;
+function showToast(msg) {
+  const id = `toast-${++_toastCounter}`;
+  const el = document.createElement('div');
+  el.id = id;
+  el.className = 'refresh-indicator';  // reuse existing styling (bottom-right pill)
+  // Offset stacked toasts so they don't overlap the refresh indicator
+  el.style.bottom = `${16 + (document.querySelectorAll('.refresh-indicator:not(#refreshIndicator)').length) * 44}px`;
+  el.innerHTML = `<span class="refresh-spinner"></span> ${msg}`;
+  document.body.appendChild(el);
+  el.style.display = 'flex';
+  return id;
+}
+function hideToast(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
 }
 
 // "Last refreshed" indicator in the topbar
@@ -998,10 +1120,41 @@ function onSearchInput() {
   renderCompanyList();
 }
 
-function applyFilters() {
+async function applyFilters() {
   readFiltersFromUI();
   const f = state.filters;
   const y = f.year;
+
+  // If a HARD SODRA-dependent filter is active (minEmp, minSal, maxSal)
+  // and we haven't loaded SODRA for the bulk of the universe yet, prefetch it first.
+  // These filters hide companies whose SODRA is unknown — which would look like a
+  // bug. Note: hideInactive is an OR check (revenue>0 OR employees>0) so it works
+  // fine without SODRA for companies that have financials.
+  const needsSodra = (f.minEmp != null) || (f.minSal != null) || (f.maxSal != null);
+  if (needsSodra) {
+    // Determine which JARs we haven't fetched yet, restricted to companies that
+    // would pass the non-SODRA filters (this keeps the fetch manageable when the
+    // user has e.g. picked a municipality).
+    const jarsToFetch = [];
+    for (const c of state.allCompanies) {
+      // Apply non-SODRA filters first so we don't fetch SODRA for companies
+      // that would be excluded anyway
+      if (f.muni && c.municipality !== f.muni) continue;
+      if (sodraFetchedJars.has(c.jar_kodas)) continue;
+      jarsToFetch.push(c.jar_kodas);
+    }
+    if (jarsToFetch.length > 0) {
+      // Show a toast — some fetches can be large (e.g. filtering 200K companies)
+      const toast = showToast(`Loading workforce data for filter… (${jarsToFetch.length.toLocaleString()} companies)`);
+      try {
+        await ensureSodraLoaded(jarsToFetch);
+      } catch (e) {
+        console.warn('SODRA prefetch for filter failed:', e);
+      } finally {
+        hideToast(toast);
+      }
+    }
+  }
 
   // COHORT filter: everything EXCEPT search (which is a sidebar-list filter).
   // state.filteredCompanies is the "filtered universe" that drives the Overview cohort.
@@ -1917,11 +2070,49 @@ function drawCompanyVsSectorLine(canvasId, yLabel, sectorHist, compHist, sectorK
 /* ==========================================================
  *  Top-level refresh
  * ========================================================== */
-function refreshUI() {
+async function refreshUI() {
   destroyAllCharts();
   rebuildTabs();
+
+  // Lazy-load SODRA for the current cohort (sectors + selected companies) and
+  // all company-detail tabs. This runs in the background; renders happen twice:
+  // once immediately (financials only, no salary/employees), once after SODRA
+  // lands (full data). The user sees the page instantly, and salary numbers
+  // fill in ~200ms later.
+
+  // First render — immediate, with whatever SODRA we already have (probably none on first visit)
   renderOverview();
   renderCompanyTabs();
+
+  // Collect JARs whose SODRA we actually need:
+  //   - everyone in the current cohort (for sector aggregations + median)
+  //   - all selected companies (for their detail tabs)
+  const jars = new Set();
+  const cohort = getCohort();
+  for (const c of cohort.companies) jars.add(c.jar_kodas);
+  for (const c of state.selectedCompanies.values()) jars.add(c.jar_kodas);
+  if (!jars.size) return;
+
+  // Check if any are missing — if not, we're done, no re-render needed
+  let allLoaded = true;
+  for (const jar of jars) {
+    if (!sodraFetchedJars.has(jar)) { allLoaded = false; break; }
+  }
+  if (allLoaded) return;
+
+  // Show a small "loading workforce data…" toast while we fetch
+  const toast = showToast('Loading workforce data…');
+  try {
+    await ensureSodraLoaded([...jars]);
+    // Re-render with the newly-arrived SODRA data
+    destroyAllCharts();
+    renderOverview();
+    renderCompanyTabs();
+  } catch (e) {
+    console.warn('SODRA lazy-load failed:', e);
+  } finally {
+    hideToast(toast);
+  }
 }
 
 
