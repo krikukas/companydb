@@ -179,6 +179,24 @@ tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;col
 .overview-header .selected-companies-line b{color:var(--c-gold)}
 
 .section-heading{font-size:14px;font-weight:700;color:var(--c-earth);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--c-border)}
+
+/* ---- Partial-year warning banner (when latest fiscal year is still receiving filings) ---- */
+.partial-year-banner{
+  margin:0 0 14px 0;
+  padding:12px 16px;
+  background:#fff8e6;
+  border:1px solid #e8c97a;
+  border-left:4px solid #c89914;
+  border-radius:4px;
+  color:#5c4810;
+  font-size:13px;
+  line-height:1.5;
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+}
+.partial-year-banner b{color:#3f3108}
+.partial-year-icon{font-size:16px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -319,19 +337,51 @@ let FIN_PREV_YEAR = 2023;
 let SODRA_LATEST_YEAR = 2025;
 let SODRA_PREV_YEAR = 2024;
 
+// Global: whether FIN_LATEST_YEAR is still actively receiving filings.
+// When true, comparisons against FIN_LATEST_YEAR are misleading because not all
+// companies have reported yet. A warning banner is shown in Overview.
+let FIN_LATEST_IS_PARTIAL = false;
+let FIN_LATEST_FILING_RATE = null;  // e.g. 0.17 means 17% of prev-year's universe have filed
+
 function computeLatestYears() {
-  // Scan financials to find the latest year where ANY company reports revenue or ebt
-  let latestFin = 2015, prevFin = 2014;
+  // Count how many companies reported revenue per year
+  const countsByYear = {};
   for (const jar in state.financials) {
     for (const f of state.financials[jar]) {
-      if (f.revenue != null || f.ebt != null) {
-        if (f.year > latestFin) { prevFin = latestFin; latestFin = f.year; }
-        else if (f.year > prevFin && f.year < latestFin) { prevFin = f.year; }
+      if (f.revenue != null && f.revenue > 0) {
+        countsByYear[f.year] = (countsByYear[f.year] || 0) + 1;
       }
     }
   }
+  // Sort years descending
+  const sortedYears = Object.keys(countsByYear).map(Number).sort((a, b) => b - a);
+
+  // Pick the latest year that is "complete" — at least 50% of the previous year's
+  // filing count. This avoids treating a partial year (filings still rolling in)
+  // as the headline comparison year.
+  const COMPLETENESS_THRESHOLD = 0.50;
+  let latestFin = null;
+  let rawLatest = null;
+  let rawLatestRate = null;
+  for (let i = 0; i < sortedYears.length - 1; i++) {
+    const y = sortedYears[i];
+    const prevCount = countsByYear[sortedYears[i + 1]];
+    const ratio = prevCount > 0 ? (countsByYear[y] / prevCount) : 1;
+    if (rawLatest === null) { rawLatest = y; rawLatestRate = ratio; }
+    if (ratio >= COMPLETENESS_THRESHOLD) { latestFin = y; break; }
+  }
+  if (latestFin === null) latestFin = sortedYears[0] || 2024;
+
+  // prev = year just before latest (for YoY comparisons)
+  const prevFin = sortedYears.find(y => y < latestFin) || (latestFin - 1);
+
   FIN_LATEST_YEAR = latestFin;
   FIN_PREV_YEAR = prevFin;
+  // Flag if the RAW latest year (what we'd have picked without the threshold) is
+  // newer than FIN_LATEST_YEAR — that means there IS a newer year with data, but
+  // it's still partial.
+  FIN_LATEST_IS_PARTIAL = (rawLatest !== null && rawLatest > latestFin);
+  FIN_LATEST_FILING_RATE = rawLatestRate;
 
   // SODRA latest
   let latestSo = 2015, prevSo = 2014;
@@ -344,7 +394,7 @@ function computeLatestYears() {
   }
   SODRA_LATEST_YEAR = latestSo;
   SODRA_PREV_YEAR = prevSo;
-  console.log(`Latest financial year: ${FIN_LATEST_YEAR} (prev: ${FIN_PREV_YEAR}) | Latest SODRA year: ${SODRA_LATEST_YEAR} (prev: ${SODRA_PREV_YEAR})`);
+  console.log(`Latest COMPLETE financial year: ${FIN_LATEST_YEAR} (prev: ${FIN_PREV_YEAR}) | Raw latest: ${rawLatest} (partial: ${FIN_LATEST_IS_PARTIAL}, rate: ${rawLatestRate}) | SODRA: ${SODRA_LATEST_YEAR} (prev: ${SODRA_PREV_YEAR})`);
 }
 
 /* ==========================================================
@@ -642,7 +692,18 @@ async function loadAllData() {
   // Try cache first
   const cached = await loadCache();
   if (cached) {
-    state.allCompanies = cached.allCompanies;
+    // Dedup cached.allCompanies — if the user has an old corrupted cache
+    // from before the order=jar_kodas fix, every JAR may appear twice. Strip dupes.
+    const seenJ = new Set();
+    const deduped = [];
+    let cacheDupes = 0;
+    for (const c of (cached.allCompanies || [])) {
+      if (seenJ.has(c.jar_kodas)) { cacheDupes += 1; continue; }
+      seenJ.add(c.jar_kodas);
+      deduped.push(c);
+    }
+    if (cacheDupes) console.warn(`[dashboard] cache contained ${cacheDupes} duplicate company JARs — dedup applied on load`);
+    state.allCompanies = deduped;
     state.financials = cached.financials;
     state.sodra = cached.sodra || {};
     state.lastRefreshTs = cached.ts;
@@ -677,17 +738,28 @@ async function fetchAndInstallData(background) {
 
   setMsg('Loading companies…');
   const companies = await sbFetchAll(
-    'companies?select=jar_kodas,company_name,evrk_code,evrk_name,legal_form,municipality',
+    'companies?select=jar_kodas,company_name,evrk_code,evrk_name,legal_form,municipality&order=jar_kodas',
     progressFor('Loading companies')
   );
-  const normalizedCompanies = companies.map(c => ({
-    jar_kodas: c.jar_kodas,
-    name: c.company_name || '',
-    evrk_code: c.evrk_code,
-    evrk_name: c.evrk_name,
-    legal_form: c.legal_form,
-    municipality: c.municipality || ''
-  }));
+  // Dedup by jar_kodas defensively. The order=jar_kodas in the URL above ensures
+  // pagination is stable, but if any code path ever forgets it, this prevents the
+  // whole-dashboard "everything appears twice" failure mode from hitting users.
+  const seenCompanyJars = new Set();
+  const normalizedCompanies = [];
+  let dupCompanyCount = 0;
+  for (const c of companies) {
+    if (seenCompanyJars.has(c.jar_kodas)) { dupCompanyCount += 1; continue; }
+    seenCompanyJars.add(c.jar_kodas);
+    normalizedCompanies.push({
+      jar_kodas: c.jar_kodas,
+      name: c.company_name || '',
+      evrk_code: c.evrk_code,
+      evrk_name: c.evrk_name,
+      legal_form: c.legal_form,
+      municipality: c.municipality || ''
+    });
+  }
+  if (dupCompanyCount) console.warn(`[dashboard] companies fetch returned ${dupCompanyCount} duplicate JARs — dedup applied`);
 
   setMsg('Loading financials…');
   const fins = await sbFetchAll(
@@ -1290,7 +1362,21 @@ function getCohort() {
     ? state.filteredCompanies
     : state.allCompanies;
 
-  const companies = base.filter(c => sectorKeys.has(c.evrk_code));
+  const filtered = base.filter(c => sectorKeys.has(c.evrk_code));
+  // Defensive dedup: base (state.filteredCompanies) has been observed to contain
+  // duplicate entries for the same JAR in some edge cases. Dedup here so every
+  // downstream consumer (pie chart, market share table, bubble chart, historical
+  // trends, Excel export) sees each company exactly once.
+  const seenJars = new Set();
+  const companies = [];
+  let dupCount = 0;
+  for (const c of filtered) {
+    if (seenJars.has(c.jar_kodas)) { dupCount += 1; continue; }
+    seenJars.add(c.jar_kodas);
+    companies.push(c);
+  }
+  if (dupCount) console.warn(`[dashboard] getCohort dropped ${dupCount} duplicate JAR entries`);
+
   const sectorNames = [];
   for (const k of sectorKeys) {
     const s = state.sectorOptions.find(x => x.evrk_code === k);
@@ -1400,6 +1486,33 @@ function renderOverview() {
   const revPerEmpGrowth = yoyPct(cur.median_rev_per_emp, prev.median_rev_per_emp);
   const salaryGrowth = yoyPct(curSodra.median_salary, prevSodra.median_salary);
 
+  // Check if there's a NEWER year with partial filings for THIS cohort — warn the user.
+  // Rationale: FIN_LATEST_YEAR has been chosen globally to be the latest COMPLETE year
+  // (>=50% filing rate). But there may be a partial year beyond that with some data.
+  // For this specific cohort, show how many companies have filed for each year and
+  // whether the comparison shown is apples-to-apples.
+  let partialNextYear = null;
+  let partialNextCount = 0;
+  let partialNextRate = 0;
+  const candidateYear = FIN_LATEST_YEAR + 1;
+  const curFiledCount = cohort.companies.filter(c => {
+    const f = (state.financials[c.jar_kodas] || []).find(x => x.year === candidateYear && x.revenue != null && x.revenue > 0);
+    return !!f;
+  }).length;
+  if (curFiledCount > 0 && cur.n_with_revenue > 0) {
+    partialNextYear = candidateYear;
+    partialNextCount = curFiledCount;
+    partialNextRate = curFiledCount / cur.n_with_revenue;
+  }
+  const partialBanner = partialNextYear
+    ? `<div class="partial-year-banner">
+         <span class="partial-year-icon">⚠</span>
+         <b>${partialNextYear} data is partial</b> — only ${partialNextCount} of ${cur.n_with_revenue.toLocaleString()} companies
+         (${Math.round(partialNextRate * 100)}%) have filed for ${partialNextYear}. Headline KPIs use ${FIN_LATEST_YEAR} instead.
+         You can still view ${partialNextYear} data in the tables below.
+       </div>`
+    : '';
+
   const selectedNames = [...state.selectedCompanies.values()].map(c => c.name);
   const selectedLine = selectedNames.length
     ? `<div class="selected-companies-line"><b>Selected:</b> ${selectedNames.map(escapeHtml).join(' · ')}</div>`
@@ -1423,6 +1536,7 @@ function renderOverview() {
       ${filterSummary}
       ${selectedLine}
     </div>
+    ${partialBanner}
 
     <div class="kpi-grid">
       <div class="kpi">
@@ -1623,7 +1737,20 @@ function drawMarketShareTable(cohort) {
   for (const y of yearsCols) sectorTotals[y] = sum(cohort.companies.map(c => getCompanyYearData(c.jar_kodas, y).revenue));
 
   const { top5, selectedExtras } = getTop5PlusSelected(cohort.companies, FIN_LATEST_YEAR);
-  const pool = [...top5, ...selectedExtras];
+  // Defensive dedup: even though top5 + selectedExtras should already be disjoint,
+  // cohort.companies has been observed to contain duplicate entries in some edge cases
+  // (see GitHub issue / debug log). Dedup here guarantees the table never shows the
+  // same company twice.
+  const seenJars = new Set();
+  const pool = [];
+  for (const x of [...top5, ...selectedExtras]) {
+    if (seenJars.has(x.c.jar_kodas)) {
+      console.warn('[dashboard] duplicate JAR in market share pool:', x.c.jar_kodas, x.c.name);
+      continue;
+    }
+    seenJars.add(x.c.jar_kodas);
+    pool.push(x);
+  }
   const selKeys = new Set([...state.selectedCompanies.keys()]);
 
   const header = `<thead><tr><th>Company</th>${yearsCols.map(y => `<th class="num">${y}</th>`).join('')}</tr></thead>`;
