@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CompanyDB — Sector Overview</title>
+<title>CompanyDB v2 — Sector Overview</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -310,7 +310,7 @@ const SUPABASE_URL = 'https://fxapkoylegdibrhsajbo.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_gZir2IvzDxdf39kOzAmVGQ_PKK4pKdA';
 const CACHE_KEY = 'companydb_v2_cache';
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
-const PAGE_SIZE = 1000;
+const PAGE_SIZE = 5000;
 const YEARS = [2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025];
 // Latest years are data-driven, recomputed after data loads.
 // Financial-based KPIs use FIN_LATEST_YEAR; SODRA-based KPIs use SODRA_LATEST_YEAR.
