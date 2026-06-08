@@ -179,6 +179,11 @@ tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;col
 .overview-header .selected-companies-line b{color:var(--c-gold)}
 
 .section-heading{font-size:14px;font-weight:700;color:var(--c-earth);text-transform:uppercase;letter-spacing:.05em;margin:22px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--c-border)}
+.gov-table{width:auto;min-width:380px;border-collapse:collapse;font-size:13.5px}
+.gov-table td{padding:8px 18px 8px 0;border-bottom:1px solid var(--c-border);vertical-align:top}
+.gov-table tr:last-child td{border-bottom:none}
+.gov-table .gov-key{color:var(--c-text-soft);text-transform:uppercase;font-size:10.5px;letter-spacing:.06em;font-weight:700;white-space:nowrap;padding-top:10px}
+.gov-table .gov-val{color:var(--c-text);font-weight:600}
 
 /* ---- Partial-year warning banner (when latest fiscal year is still receiving filings) ---- */
 .partial-year-banner{
@@ -326,7 +331,7 @@ tr.selected-row td{background:rgba(233,172,20,.18)!important;font-weight:600;col
  * ========================================================== */
 const SUPABASE_URL = 'https://fxapkoylegdibrhsajbo.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_gZir2IvzDxdf39kOzAmVGQ_PKK4pKdA';
-const CACHE_KEY = 'companydb_v2_cache';
+const CACHE_KEY = 'companydb_v3_cache'; // bumped v2->v3: added VAT + leadership/governance columns
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
 const PAGE_SIZE = 5000;
 const YEARS = [2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025];
@@ -452,31 +457,78 @@ async function sbFetch(path, extraHeaders) {
 
 // onProgress(loaded, total) is called after each page is fetched.
 // Total may be null until the first page returns Content-Range.
-async function sbFetchAll(path, onProgress) {
+// Keyset (cursor) pagination. Instead of OFFSET (which forces Postgres to walk
+// past every prior row — ~9s per page at 220k offset, causing 57014 statement
+// timeouts on the full load), we page forward with `{cursorCol}=gt.{lastValue}`.
+// This rides the jar_kodas index directly so page 45 is as fast as page 1.
+//
+// cursorCol MUST be the first column in the path's &order= clause.
+//   - companies:   cursorCol='jar_kodas' (unique → clean keyset)
+//   - financials:  cursorCol='jar_kodas' (NOT unique — up to 11 rows/jar — so we
+//                  use a boundary-safe cursor: page on the LAST FULLY-FETCHED jar,
+//                  re-requesting the straddling jar's remaining rows next page).
+async function sbFetchAll(path, onProgress, cursorCol = 'jar_kodas') {
   const results = [];
-  let offset = 0;
+  let cursor = null;
   let total = null;
+  let firstPage = true;
+  let guard = 0;
+
   while (true) {
     const sep = path.includes('?') ? '&' : '?';
-    const pageUrl = `${path}${sep}limit=${PAGE_SIZE}&offset=${offset}`;
-    // First page: ask for exact count via Prefer header. Cheaper than count(*).
-    const headers = (offset === 0) ? { 'Prefer': 'count=exact' } : {};
+    let pageUrl = `${path}${sep}limit=${PAGE_SIZE}`;
+    if (cursor !== null) {
+      // strict greater-than: only rows whose cursorCol is beyond the cursor
+      pageUrl += `&${cursorCol}=gt.${encodeURIComponent(cursor)}`;
+    }
+    // First page: ask for exact count via Prefer header (cheaper than count(*)).
+    const headers = firstPage ? { 'Prefer': 'count=exact' } : {};
     const { data, headers: resHeaders } = await sbFetch(pageUrl, headers);
-    results.push(...data);
 
-    // Parse Content-Range: e.g. "0-999/29117"
-    if (offset === 0) {
+    if (firstPage) {
       const cr = resHeaders.get('content-range');
       if (cr) {
         const m = cr.match(/\/(\d+|\*)$/);
         if (m && m[1] !== '*') total = parseInt(m[1]);
       }
+      firstPage = false;
     }
+
+    if (data.length === 0) break;
+
+    // Determine the cursor value (max of cursorCol in this page). Because the
+    // path orders by cursorCol ascending, the last row holds the max.
+    const lastVal = data[data.length - 1][cursorCol];
+
+    if (data.length < PAGE_SIZE) {
+      // Last page — take everything, no straddle risk.
+      results.push(...data);
+      if (onProgress) onProgress(results.length, total);
+      break;
+    }
+
+    // Full page. The boundary jar (lastVal) may have more rows on the next page.
+    // To avoid duplicates AND missing rows, drop the trailing rows that share
+    // lastVal from THIS page, and set the cursor to lastVal so `gt` re-fetches
+    // that jar's rows in full next time. (For unique cursors like companies this
+    // trims nothing, since only one row has lastVal.)
+    let cut = data.length;
+    while (cut > 0 && data[cut - 1][cursorCol] === lastVal) cut--;
+
+    if (cut === 0) {
+      // Entire page is a single cursor value (a jar with >PAGE_SIZE rows — can't
+      // happen here, max is 11). Fall back to taking it all and advancing past it
+      // to avoid an infinite loop.
+      results.push(...data);
+      cursor = lastVal;
+    } else {
+      results.push(...data.slice(0, cut));
+      cursor = data[cut - 1][cursorCol]; // last fully-fetched cursor value
+    }
+
     if (onProgress) onProgress(results.length, total);
 
-    if (data.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-    if (offset > 5000000) break; // safety — covers ~5M rows
+    if (++guard > 100000) break; // safety
   }
   return results;
 }
@@ -607,7 +659,7 @@ function scheduleCacheSave() {
 /* ==========================================================
  *  Cache — IndexedDB (no size limit for our 30MB payload)
  * ========================================================== */
-const IDB_NAME = 'companydb_v2';
+const IDB_NAME = 'companydb_v3';
 const IDB_STORE = 'dataset';
 const IDB_KEY = 'snapshot';
 
@@ -738,7 +790,7 @@ async function fetchAndInstallData(background) {
 
   setMsg('Loading companies…');
   const companies = await sbFetchAll(
-    'companies?select=jar_kodas,company_name,evrk_code,evrk_name,legal_form,municipality&order=jar_kodas',
+    'companies?select=jar_kodas,company_name,evrk_code,evrk_name,legal_form,municipality,vat_code,ceo_gender,ceo_start_date,board_start_date,board_men,board_women,supervisory_board,supervisory_board_men,supervisory_board_women,council,council_men,council_women&order=jar_kodas',
     progressFor('Loading companies')
   );
   // Dedup by jar_kodas defensively. The order=jar_kodas in the URL above ensures
@@ -756,7 +808,20 @@ async function fetchAndInstallData(background) {
       evrk_code: c.evrk_code,
       evrk_name: c.evrk_name,
       legal_form: c.legal_form,
-      municipality: c.municipality || ''
+      municipality: c.municipality || '',
+      // Leadership & governance (from JAR_VALDYMAS import)
+      vat_code: c.vat_code || null,
+      ceo_gender: c.ceo_gender || null,
+      ceo_start_date: c.ceo_start_date || null,
+      board_start_date: c.board_start_date || null,
+      board_men: c.board_men,
+      board_women: c.board_women,
+      supervisory_board: c.supervisory_board || false,
+      supervisory_board_men: c.supervisory_board_men,
+      supervisory_board_women: c.supervisory_board_women,
+      council: c.council || false,
+      council_men: c.council_men,
+      council_women: c.council_women
     });
   }
   if (dupCompanyCount) console.warn(`[dashboard] companies fetch returned ${dupCompanyCount} duplicate JARs — dedup applied`);
@@ -2058,6 +2123,80 @@ function drawHistLine(canvasId, yLabel, sectorHist, companyHists, sectorKey, com
 /* ==========================================================
  *  Company detail tabs
  * ========================================================== */
+// Build the "Leadership & Governance" block for a company. Fields that are empty
+// are omitted (most private UABs only have CEO + VAT; boards/councils are rare).
+function renderGovernanceBlock(c) {
+  const rows = [];
+
+  if (c.vat_code) {
+    rows.push(['VAT code', escapeHtml(c.vat_code)]);
+  }
+
+  // CEO: gender + appointment date + tenure
+  if (c.ceo_gender || c.ceo_start_date) {
+    const bits = [];
+    if (c.ceo_gender) bits.push(escapeHtml(c.ceo_gender));
+    if (c.ceo_start_date) {
+      bits.push(`appointed ${escapeHtml(c.ceo_start_date)}`);
+      const yrs = yearsSince(c.ceo_start_date);
+      if (yrs != null) bits.push(`${yrs} yr${yrs === 1 ? '' : 's'} tenure`);
+    }
+    rows.push(['CEO / Director', bits.join(' · ')]);
+  }
+
+  // Board (valdyba) — only if present
+  if (c.board_start_date || c.board_men != null || c.board_women != null) {
+    rows.push(['Management board', composeBody(c.board_men, c.board_women, c.board_start_date)]);
+  }
+  // Supervisory board (stebėtojų taryba)
+  if (c.supervisory_board) {
+    rows.push(['Supervisory board', composeBody(c.supervisory_board_men, c.supervisory_board_women, null)]);
+  }
+  // Council (taryba)
+  if (c.council) {
+    rows.push(['Council', composeBody(c.council_men, c.council_women, null)]);
+  }
+
+  if (rows.length === 0) return '';
+
+  const body = rows.map(([k, v]) =>
+    `<tr><td class="gov-key">${k}</td><td class="gov-val">${v}</td></tr>`
+  ).join('');
+
+  return `
+    <h2 class="section-heading">Leadership &amp; governance</h2>
+    <div class="tbl-wrap"><table class="gov-table"><tbody>${body}</tbody></table></div>
+  `;
+}
+
+// "3 members (2 M / 1 F) · formed 2019-05-12"
+function composeBody(men, women, since) {
+  const m = (men == null) ? 0 : men;
+  const w = (women == null) ? 0 : women;
+  const haveCounts = (men != null || women != null);
+  const parts = [];
+  if (haveCounts) {
+    const total = m + w;
+    parts.push(`${total} member${total === 1 ? '' : 's'} (${m} M / ${w} F)`);
+  } else {
+    parts.push('present');
+  }
+  if (since) parts.push(`formed ${escapeHtml(since)}`);
+  return parts.join(' · ');
+}
+
+// Whole years since an ISO date string (YYYY-MM-DD). Null on bad input.
+function yearsSince(isoDate) {
+  if (!isoDate) return null;
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  let yrs = now.getFullYear() - d.getFullYear();
+  const mDiff = now.getMonth() - d.getMonth();
+  if (mDiff < 0 || (mDiff === 0 && now.getDate() < d.getDate())) yrs--;
+  return yrs < 0 ? null : yrs;
+}
+
 function renderCompanyTabs() {
   const wrap = document.getElementById('companyTabPanels');
   wrap.innerHTML = '';
@@ -2088,6 +2227,8 @@ function renderCompanyTabs() {
         <div class="kpi"><div class="kpi-label">Employees (avg)</div><div class="kpi-value">${curY.employees==null ? '—' : Math.round(curY.employees).toLocaleString()}</div><div class="kpi-change flat">Rev/emp: €${fmtEUR(curY.rev_per_emp)}</div></div>
         <div class="kpi"><div class="kpi-label">Avg salary (€/mo)</div><div class="kpi-value">€${fmtEUR(curY.salary)}</div><div class="kpi-change flat">${FIN_LATEST_YEAR}</div></div>
       </div>
+
+      ${renderGovernanceBlock(c)}
 
       <h2 class="section-heading">Historical trends (2015–${SODRA_LATEST_YEAR}) — vs sector</h2>
       <div class="chart-grid-2">
@@ -2724,7 +2865,34 @@ async function buildCompanySheet(wb, c, cohort, images) {
   const jarRow = sheet.addRow(['JAR code:', c.jar_kodas]);
   sheet.getCell(jarRow.number, 1).font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: EX.GOLD } };
   sheet.getCell(jarRow.number, 2).font = { name: 'Calibri', size: 10.5, color: { argb: EX.EARTH } };
+
+  const vatRow = sheet.addRow(['VAT code:', c.vat_code || '—']);
+  sheet.getCell(vatRow.number, 1).font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: EX.GOLD } };
+  sheet.getCell(vatRow.number, 2).font = { name: 'Calibri', size: 10.5, color: { argb: EX.EARTH } };
   sheet.addRow([]);
+
+  // Leadership & governance
+  const govRows = [];
+  if (c.ceo_gender || c.ceo_start_date) {
+    govRows.push(['CEO / Director', c.ceo_gender || '—', c.ceo_start_date ? `since ${c.ceo_start_date}` : '']);
+  }
+  if (c.board_start_date || c.board_men != null || c.board_women != null) {
+    const m = c.board_men == null ? 0 : c.board_men, w = c.board_women == null ? 0 : c.board_women;
+    govRows.push(['Management board', `${m + w} members (${m} M / ${w} F)`, c.board_start_date ? `formed ${c.board_start_date}` : '']);
+  }
+  if (c.supervisory_board) {
+    const m = c.supervisory_board_men == null ? 0 : c.supervisory_board_men, w = c.supervisory_board_women == null ? 0 : c.supervisory_board_women;
+    govRows.push(['Supervisory board', `${m + w} members (${m} M / ${w} F)`, '']);
+  }
+  if (c.council) {
+    const m = c.council_men == null ? 0 : c.council_men, w = c.council_women == null ? 0 : c.council_women;
+    govRows.push(['Council', `${m + w} members (${m} M / ${w} F)`, '']);
+  }
+  if (govRows.length) {
+    addSectionHeader(sheet, 'LEADERSHIP & GOVERNANCE', 3);
+    addTable(sheet, ['Body', 'Detail', 'Since'], govRows, [null, null, null]);
+    sheet.addRow([]);
+  }
 
   // KPIs
   const cur = getCompanyYearDerived(c.jar_kodas, FIN_LATEST_YEAR);
