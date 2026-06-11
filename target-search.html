@@ -95,6 +95,56 @@ table.rt td .salyr{color:#bdb7a4;font-size:10.5px;margin-left:3px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-msg{font-size:13px;color:var(--c-text-soft);font-weight:600}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--c-earth);color:#fff;padding:10px 18px;border-radius:5px;font-size:13px;z-index:1500;box-shadow:0 6px 20px rgba(69,65,50,.3);border-left:3px solid var(--c-gold)}
+
+/* ---- Tabs ---- */
+.tabbar{display:flex;align-items:flex-end;gap:4px;padding:8px 18px 0;border-bottom:1px solid var(--c-border);overflow-x:auto;flex-shrink:0;background:var(--c-bg)}
+.tab{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border:1px solid var(--c-border);border-bottom:none;border-radius:6px 6px 0 0;background:#f0ece1;color:var(--c-text-soft);font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;max-width:240px;transition:all .1s}
+.tab:hover{background:#e9e4d6;color:var(--c-earth)}
+.tab.active{background:var(--c-surface);color:var(--c-earth);border-color:var(--c-border);border-bottom:2px solid var(--c-gold);margin-bottom:-1px}
+.tab .tab-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab-close{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:14px;line-height:1;color:var(--c-text-soft);flex-shrink:0}
+.tab-close:hover{background:var(--c-danger);color:#fff}
+
+/* ---- List / detail panes ---- */
+.list-view{flex:1;min-height:0;display:flex;flex-direction:column}
+.results-meta .spacer{flex:1}
+.rm-sel{font-size:12px;color:var(--c-earth);font-weight:700}
+.mini-btn{padding:4px 10px;border:1px solid var(--c-border);border-radius:3px;background:#fff;color:var(--c-text-soft);font-size:11px;font-weight:600;font-family:inherit;cursor:pointer;text-transform:uppercase;letter-spacing:.03em}
+.mini-btn:hover{color:var(--c-earth);border-color:var(--c-earth)}
+
+/* selection checkbox + clickable name inside the Company cell */
+.cn-wrap{display:flex;align-items:center;gap:8px;max-width:100%;overflow:hidden}
+.selbox{flex-shrink:0;display:inline-flex;cursor:pointer}
+.selbox input{accent-color:var(--c-gold);cursor:pointer;width:15px;height:15px}
+.clink{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;color:var(--c-earth);font-weight:600}
+.clink:hover{color:var(--c-gold);text-decoration:underline}
+table.rt tbody tr:hover td.col-name .clink{color:var(--c-gold)}
+
+/* ---- Detail view ---- */
+.detail-view{flex:1;min-height:0;overflow:auto;padding:18px 22px}
+.detail-loading{padding:40px;color:var(--c-text-soft);font-size:14px}
+.dt-head{margin-bottom:6px}
+.dt-name{font-size:20px;font-weight:700;color:var(--c-earth)}
+.dt-meta{font-size:13px;color:var(--c-text-soft);margin-top:4px;line-height:1.6}
+.dt-meta b{color:var(--c-text);font-weight:600}
+.dt-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start}
+@media(max-width:920px){.dt-grid{grid-template-columns:1fr}}
+.dt-card{border:1px solid var(--c-border);border-radius:6px;background:var(--c-surface);overflow:hidden}
+.dt-card h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:var(--c-earth);padding:8px 14px;border-bottom:2px solid var(--c-gold)}
+.dt-card .dt-body{padding:4px 0}
+table.dt-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+table.dt-table th,table.dt-table td{padding:6px 14px;font-size:12.5px;text-align:right;border-bottom:1px solid #f1eee3}
+table.dt-table th{color:var(--c-text-soft);font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.03em;text-align:right}
+table.dt-table th:first-child,table.dt-table td:first-child{text-align:left;font-weight:600;color:var(--c-earth)}
+table.dt-table tr:last-child td{border-bottom:none}
+table.dt-table td .neg{color:var(--c-danger)}
+table.dt-table td .muted{color:#bdb7a4}
+.gov-list{padding:8px 14px}
+.gov-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:12.5px;border-bottom:1px solid #f5f2e8}
+.gov-row:last-child{border-bottom:none}
+.gov-row .gk{color:var(--c-text-soft);font-weight:600}
+.gov-row .gv{color:var(--c-text);text-align:right}
+.dt-empty{padding:14px;color:var(--c-text-soft);font-size:12.5px;font-style:italic}
 </style>
 </head>
 <body>
@@ -183,18 +233,28 @@ table.rt td .salyr{color:#bdb7a4;font-size:10.5px;margin-left:3px}
   </aside>
 
   <div class="main">
+    <div class="tabbar" id="tabbar"></div>
+
+    <div class="list-view" id="listView">
     <div class="results-meta">
       <span class="rm-title">Overview</span>
       <span class="rm-count" id="rmCount"></span>
       <span class="rm-filters" id="rmFilters"></span>
+      <span class="spacer"></span>
+      <span class="rm-sel" id="selMeta"></span>
+      <button class="mini-btn" onclick="selectAllShown()">Select all shown</button>
+      <button class="mini-btn" onclick="clearSelection()">Clear selection</button>
     </div>
-    <div class="note" id="salaryNote">Avg salary uses each company's latest available SODRA year. Hover a salary to see the year. Blank cells = no filing.</div>
+    <div class="note" id="salaryNote">Tick companies to build an export shortlist (export uses your ticks, or all shown if none ticked). Click a company name to open its detail tab. Avg salary = each company's latest available SODRA year.</div>
     <div class="table-scroll" id="tableScroll">
       <table class="rt" id="rtable">
         <thead id="rthead"></thead>
         <tbody id="rtbody"></tbody>
       </table>
     </div>
+    </div>
+
+    <div class="detail-view" id="detailView" style="display:none"></div>
   </div>
 </div>
 
@@ -235,8 +295,18 @@ const state = {
   excludedSectors: new Set(),// sectors unticked in the facet
   display: [],               // rows after facet + name-search + sort
   sortCol: 'rev_' + 2024,
-  sortDir: 'desc'
+  sortDir: 'desc',
+
+  selected: new Set(),       // shortlist of selected JARs (persists across filters)
+  tabs: [],                  // open company detail tabs: [{jar, name}]
+  activeTab: 'list',         // 'list' or a jar code
+  detailCache: {}            // {jar: full company row from companies?select=*}
 };
+let _companyByJar = null;
+function companyByJar() {
+  if (!_companyByJar) { _companyByJar = {}; for (const c of state.allCompanies) _companyByJar[c.jar_kodas] = c; }
+  return _companyByJar;
+}
 
 /* ==========================================================
  *  Helpers
@@ -509,6 +579,7 @@ async function fetchAndInstallData(background) {
   for (const k in byJar) byJar[k].sort((a,b) => a.year - b.year);
   state.allCompanies = normalized;
   state.financials = byJar;
+  _companyByJar = null;
   if (!state.sodra || typeof state.sodra !== 'object') state.sodra = {};
   state.lastRefreshTs = Date.now();
   buildSectorOptions(); buildMunicipalityOptions(); computeLatestYears();
@@ -651,6 +722,7 @@ function applyDisplay() {
   sortRows(rows);
   state.display = rows;
   renderMeta();
+  updateSelMeta();
   renderHead();
   setupVirtual();
 }
@@ -737,7 +809,8 @@ function salaryCell(jar) {
   return `${fmtEUR(s.value)}<span class="salyr">'${String(s.year).slice(2)}</span>`;
 }
 function rowHtml(r) {
-  let tds = `<td class="col-name" title="${escapeHtml(r.name)} · JAR ${escapeHtml(r.jar)}">${escapeHtml(r.name)}</td>`;
+  const checked = state.selected.has(r.jar) ? 'checked' : '';
+  let tds = `<td class="col-name"><div class="cn-wrap"><label class="selbox"><input type="checkbox" ${checked} onclick="event.stopPropagation();toggleSelect('${r.jar}',this.checked)"></label><span class="clink" onclick="openCompany('${r.jar}')" title="${escapeHtml(r.name)} · JAR ${escapeHtml(r.jar)}">${escapeHtml(r.name)}</span></div></td>`;
   tds += `<td class="col-sector" title="${escapeHtml(r.evrk_name)}">${escapeHtml(r.evrk_name)}</td>`;
   for (const y of FIN_YEARS) tds += `<td>${cellNum(r['rev_' + y])}</td>`;
   for (const y of FIN_YEARS) tds += `<td>${cellNum(r['ebt_' + y])}</td>`;
@@ -800,21 +873,196 @@ function clearFilters() {
 }
 
 /* ==========================================================
+ *  Selection (export shortlist)
+ * ========================================================== */
+function toggleSelect(jar, checked) {
+  if (checked) state.selected.add(jar); else state.selected.delete(jar);
+  updateSelMeta();
+}
+function selectAllShown() {
+  for (const r of state.display) state.selected.add(r.jar);
+  updateSelMeta(); renderWindow();
+}
+function clearSelection() {
+  state.selected.clear();
+  updateSelMeta(); renderWindow();
+}
+function updateSelMeta() {
+  const n = state.selected.size;
+  const el = document.getElementById('selMeta');
+  if (el) el.textContent = n ? `Selected: ${n.toLocaleString()} — export uses selection` : 'Selected: 0 — export uses all shown';
+  const btn = document.getElementById('exportBtn');
+  if (btn) btn.textContent = n ? `Export ${n.toLocaleString()} selected →` : 'Export to Excel';
+}
+function getRowByJar(jar) {
+  const c = companyByJar()[jar];
+  if (!c) return null;
+  const row = { jar: c.jar_kodas, name: c.name, evrk_code: c.evrk_code, evrk_name: c.evrk_name || c.evrk_code || '' };
+  for (const yr of FIN_YEARS) { row['rev_' + yr] = revenueOf(jar, yr); row['ebt_' + yr] = ebtOf(jar, yr); }
+  return row;
+}
+
+/* ==========================================================
+ *  Company detail tabs
+ * ========================================================== */
+function shorten(s, n = 26) { s = s || ''; return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+function renderTabs() {
+  const bar = document.getElementById('tabbar');
+  let html = `<button class="tab ${state.activeTab === 'list' ? 'active' : ''}" onclick="switchTab('list')"><span class="tab-label">Company list</span></button>`;
+  for (const t of state.tabs) {
+    const act = state.activeTab === t.jar;
+    html += `<button class="tab ${act ? 'active' : ''}" onclick="switchTab('${t.jar}')" title="${escapeHtml(t.name)}"><span class="tab-label">${escapeHtml(shorten(t.name))}</span><span class="tab-close" onclick="event.stopPropagation();closeTab('${t.jar}')">×</span></button>`;
+  }
+  bar.innerHTML = html;
+}
+function showActiveTab() {
+  const isList = state.activeTab === 'list';
+  document.getElementById('listView').style.display = isList ? 'flex' : 'none';
+  document.getElementById('detailView').style.display = isList ? 'none' : 'block';
+  if (isList) renderWindow();
+}
+function switchTab(t) {
+  state.activeTab = t;
+  renderTabs(); showActiveTab();
+  if (t !== 'list') renderDetail(t);
+}
+function openCompany(jar) {
+  if (!state.tabs.find(t => t.jar === jar)) {
+    const c = companyByJar()[jar];
+    state.tabs.push({ jar, name: c ? c.name : jar });
+  }
+  state.activeTab = jar;
+  renderTabs(); showActiveTab(); renderDetail(jar);
+}
+function closeTab(jar) {
+  const i = state.tabs.findIndex(t => t.jar === jar);
+  if (i >= 0) state.tabs.splice(i, 1);
+  if (state.activeTab === jar)
+    state.activeTab = state.tabs.length ? state.tabs[Math.max(0, i - 1)].jar : 'list';
+  renderTabs(); showActiveTab();
+  if (state.activeTab !== 'list') renderDetail(state.activeTab);
+}
+
+async function renderDetail(jar) {
+  const dv = document.getElementById('detailView');
+  dv.innerHTML = '<div class="detail-loading">Loading company detail…</div>';
+  let c = state.detailCache[jar];
+  if (!c) {
+    try {
+      const { data } = await sbFetch(`companies?jar_kodas=eq.${encodeURIComponent(jar)}&select=*`);
+      c = (data && data[0]) ? data[0] : (companyByJar()[jar] || { jar_kodas: jar });
+    } catch (e) { c = companyByJar()[jar] || { jar_kodas: jar }; }
+    state.detailCache[jar] = c;
+  }
+  try { await ensureSodraLoaded([jar]); } catch (e) {}
+  if (state.activeTab !== jar) return;   // user switched away while loading
+  dv.innerHTML = buildDetailHtml(jar, c);
+}
+
+function buildDetailHtml(jar, c) {
+  const name = c.company_name || (companyByJar()[jar] && companyByJar()[jar].name) || jar;
+  const metaBits = [];
+  if (c.evrk_name || c.evrk_code) metaBits.push(`<b>Sector:</b> ${escapeHtml(c.evrk_name || '')} ${c.evrk_code ? '(' + escapeHtml(c.evrk_code) + ')' : ''}`);
+  if (c.legal_form) metaBits.push(`<b>Form:</b> ${escapeHtml(c.legal_form)}`);
+  if (c.municipality) metaBits.push(`<b>Municipality:</b> ${escapeHtml(c.municipality)}`);
+
+  // Financials table (all years available)
+  const fins = (state.financials[jar] || []).slice().sort((a, b) => a.year - b.year);
+  let finRows = fins.map(f => {
+    const margin = (f.revenue && f.revenue > 0 && f.ebt != null) ? (f.ebt / f.revenue * 100) : null;
+    return `<tr><td>${f.year}</td><td>${cellNum(f.revenue)}</td><td>${cellNum(f.ebt)}</td><td>${cellNum(f.net_profit)}</td><td>${margin == null ? '<span class="muted">—</span>' : (margin < 0 ? '<span class="neg">' + margin.toFixed(1) + '%</span>' : margin.toFixed(1) + '%')}</td></tr>`;
+  }).join('');
+  const finTable = fins.length
+    ? `<table class="dt-table"><thead><tr><th>Year</th><th>Revenue €</th><th>EBT €</th><th>Net profit €</th><th>EBT %</th></tr></thead><tbody>${finRows}</tbody></table>`
+    : '<div class="dt-empty">No financial statements on file.</div>';
+
+  // Workforce table (all SODRA years)
+  const so = state.sodra[jar] || {};
+  const years = Object.keys(so).map(Number).sort((a, b) => a - b);
+  let soRows = years.map(y => {
+    const d = so[y];
+    return `<tr><td>${y}</td><td>${d.avg_employees == null ? '<span class="muted">—</span>' : Math.round(d.avg_employees).toLocaleString()}</td><td>${d.avg_salary == null ? '<span class="muted">—</span>' : fmtEUR(d.avg_salary)}</td></tr>`;
+  }).join('');
+  const soTable = years.length
+    ? `<table class="dt-table"><thead><tr><th>Year</th><th>Avg employees</th><th>Avg salary €/mo</th></tr></thead><tbody>${soRows}</tbody></table>`
+    : '<div class="dt-empty">No SODRA workforce data on file.</div>';
+
+  const gov = renderGovernanceBlock(c);
+
+  return `<div class="dt-head">
+      <div class="dt-name">${escapeHtml(name)}</div>
+      <div class="dt-meta"><b>JAR:</b> ${escapeHtml(jar)}${c.vat_code ? ' · <b>VAT:</b> ' + escapeHtml(c.vat_code) : ''}<br>${metaBits.join(' · ')}</div>
+    </div>
+    <div class="dt-grid">
+      <div class="dt-card"><h3>Financials</h3><div class="dt-body">${finTable}</div></div>
+      <div class="dt-card"><h3>Workforce (SODRA)</h3><div class="dt-body">${soTable}</div></div>
+      ${gov ? `<div class="dt-card"><h3>Leadership &amp; governance</h3><div class="dt-body">${gov}</div></div>` : ''}
+    </div>`;
+}
+
+// Leadership & governance block (mirrors the main dashboard).
+function renderGovernanceBlock(c) {
+  const rows = [];
+  if (c.ceo_gender || c.ceo_start_date) {
+    const bits = [];
+    if (c.ceo_gender) bits.push(escapeHtml(c.ceo_gender));
+    if (c.ceo_start_date) {
+      bits.push(`appointed ${escapeHtml(c.ceo_start_date)}`);
+      const yrs = yearsSince(c.ceo_start_date);
+      if (yrs != null) bits.push(`${yrs} yr${yrs === 1 ? '' : 's'} tenure`);
+    }
+    rows.push(['CEO / Director', bits.join(' · ')]);
+  }
+  if (c.board_start_date || c.board_men != null || c.board_women != null)
+    rows.push(['Management board', composeBody(c.board_men, c.board_women, c.board_start_date)]);
+  if (c.supervisory_board)
+    rows.push(['Supervisory board', composeBody(c.supervisory_board_men, c.supervisory_board_women, null)]);
+  if (c.council)
+    rows.push(['Council', composeBody(c.council_men, c.council_women, null)]);
+  if (!rows.length) return '';
+  return '<div class="gov-list">' + rows.map(([k, v]) => `<div class="gov-row"><span class="gk">${k}</span><span class="gv">${v}</span></div>`).join('') + '</div>';
+}
+function composeBody(men, women, since) {
+  const m = (men == null) ? 0 : men, w = (women == null) ? 0 : women;
+  const parts = [];
+  if (men != null || women != null) { const total = m + w; parts.push(`${total} member${total === 1 ? '' : 's'} (${m} M / ${w} F)`); }
+  else parts.push('present');
+  if (since) parts.push(`formed ${escapeHtml(since)}`);
+  return parts.join(' · ');
+}
+function yearsSince(isoDate) {
+  if (!isoDate) return null;
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  let yrs = now.getFullYear() - d.getFullYear();
+  const mDiff = now.getMonth() - d.getMonth();
+  if (mDiff < 0 || (mDiff === 0 && now.getDate() < d.getDate())) yrs--;
+  return yrs < 0 ? null : yrs;
+}
+
+/* ==========================================================
  *  Excel export
  * ========================================================== */
 const EX = { EARTH:'FF454132', EARTH_LIGHT:'FF6A6552', GOLD:'FFA77A00', BG_ZEBRA:'FFF5F2E8', TEXT:'FF2A2820', WHITE:'FFFFFFFF' };
 const thinBorder = { top:{style:'thin',color:{argb:'FFE5E1D5'}}, left:{style:'thin',color:{argb:'FFE5E1D5'}}, bottom:{style:'thin',color:{argb:'FFE5E1D5'}}, right:{style:'thin',color:{argb:'FFE5E1D5'}} };
 
 async function exportExcel() {
-  if (!state.display.length) { showToast('Nothing to export — adjust filters.'); return; }
-  const t = showToast('Preparing salary data for export…');
+  // Selected shortlist if any ticks; otherwise everything currently shown.
+  let rows;
+  if (state.selected.size > 0) rows = [...state.selected].map(getRowByJar).filter(Boolean);
+  else rows = state.display.slice();
+  if (!rows.length) { showToast('Nothing to export — tick some companies or adjust filters.'); return; }
+
+  const t = showToast(`Preparing ${rows.length.toLocaleString()} companies for export…`);
   try {
-    const need = state.display.filter(r => !sodraFetchedJars.has(r.jar)).map(r => r.jar);
+    const need = rows.filter(r => !sodraFetchedJars.has(r.jar)).map(r => r.jar);
     if (need.length) await ensureSodraLoaded(need);
   } finally { hideToast(); }
 
   // Re-sort with full salary data now available (in case sorted by salary).
-  sortRows(state.display);
+  sortRows(rows);
 
   const t2 = showToast('Building Excel…');
   try {
@@ -849,7 +1097,7 @@ async function exportExcel() {
     sheet.mergeCells(subRow.number, 1, subRow.number, nCols);
     sheet.getCell(subRow.number, 1).font = { name:'Calibri', size:10.5, italic:true, color:{argb:EX.EARTH_LIGHT} };
 
-    const metaRow = sheet.addRow([`${state.display.length.toLocaleString()} companies · exported ${new Date().toISOString().slice(0,10)} · amounts in €`]);
+    const metaRow = sheet.addRow([`${rows.length.toLocaleString()} companies · exported ${new Date().toISOString().slice(0,10)} · amounts in €`]);
     sheet.mergeCells(metaRow.number, 1, metaRow.number, nCols);
     sheet.getCell(metaRow.number, 1).font = { name:'Calibri', size:10, color:{argb:EX.EARTH_LIGHT} };
     sheet.addRow([]);
@@ -870,7 +1118,7 @@ async function exportExcel() {
     hr.height = 24;
 
     const firstData = hr.number + 1;
-    for (const r of state.display) {
+    for (const r of rows) {
       const sal = latestSalary(r.jar);
       const vals = [r.name, r.evrk_name];
       for (const y of FIN_YEARS) vals.push(r['rev_' + y] != null ? r['rev_' + y] : null);
@@ -885,7 +1133,7 @@ async function exportExcel() {
         if (i >= 2) { cell.alignment = { horizontal:'right' }; if (i < nCols - 1) cell.numFmt = '#,##0'; }
       });
     }
-    const lastData = firstData + state.display.length - 1;
+    const lastData = firstData + rows.length - 1;
     for (let rr = firstData; rr <= lastData; rr++) if ((rr - firstData) % 2 === 1)
       for (let cc = 1; cc <= nCols; cc++) { const cell = sheet.getCell(rr, cc); if (!cell.fill || !cell.fill.fgColor) cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:EX.BG_ZEBRA} }; }
     if (lastData >= firstData) sheet.autoFilter = { from: { row: hr.number, column: 1 }, to: { row: lastData, column: nCols } };
@@ -910,6 +1158,8 @@ async function boot() {
     state.sortDir = 'desc';
     const yr = document.getElementById('f-year'); if (yr) yr.value = String(FIN_LATEST_YEAR);
     hideOverlay();
+    renderTabs();
+    updateSelMeta();
     await runScreen();
     // Background refresh if cache is old
     if (res.fromCache && res.cachedAt && (Date.now() - res.cachedAt > CACHE_TTL)) {
