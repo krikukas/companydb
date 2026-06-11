@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CompanyDB — Target Search</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+/* ---- Confidentus brand palette ---- */
+:root{
+  --c-earth:#454132; --c-earth-soft:#5c5745; --c-gold:#A77A00; --c-gold-bright:#E9AC14;
+  --c-gold-soft:#D4AB42; --c-olive:#AEA730; --c-bg:#faf8f3; --c-surface:#ffffff;
+  --c-border:#e5e1d5; --c-text:#2a2820; --c-text-soft:#6a6552;
+  --c-success:#4d7c2c; --c-danger:#a63b1f;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:'Calibri','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--c-bg);color:var(--c-text);font-size:14px}
+
+/* ---- Top bar ---- */
+.topbar{background:var(--c-earth);border-bottom:3px solid var(--c-gold);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:100;color:#fff}
+.brand-logo{height:30px;width:auto;display:block}
+.topbar-title{font-size:15px;font-weight:700;letter-spacing:.02em}
+.topbar-sub{color:var(--c-gold-bright);font-weight:400;font-size:12px;letter-spacing:.04em;font-style:italic;opacity:.85}
+.topbar .spacer{flex:1}
+.topbar-refreshed{color:rgba(255,255,255,.55);font-size:11px;letter-spacing:.02em;cursor:pointer;padding:3px 8px;border-radius:3px;border:1px solid rgba(255,255,255,.12);transition:all .12s}
+.topbar-refreshed:hover{color:#fff;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.3)}
+.topbar-refreshed:empty{display:none}
+.btn{padding:7px 14px;border:1px solid var(--c-border);border-radius:4px;font-size:13px;background:#fff;cursor:pointer;white-space:nowrap;font-weight:600;font-family:inherit;color:var(--c-text);transition:all .12s ease;text-decoration:none;display:inline-block}
+.btn:hover{background:#f5f2e8}
+.btn-primary{background:var(--c-gold);color:#fff;border-color:var(--c-gold)}
+.btn-primary:hover{background:#8f6700;border-color:#8f6700}
+.btn-link{background:transparent;color:#fff;border-color:rgba(255,255,255,.35)}
+.btn-link:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.6)}
+
+/* ---- Layout ---- */
+.main-layout{display:flex;min-height:calc(100vh - 60px);background:var(--c-bg)}
+.sidebar{width:300px;flex-shrink:0;background:var(--c-surface);border-right:1px solid var(--c-border);display:flex;flex-direction:column;overflow:hidden;position:sticky;top:60px;height:calc(100vh - 60px)}
+.sidebar-section{padding:14px 14px 10px;border-bottom:1px solid var(--c-border)}
+.sidebar-section.facet{flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0}
+.sidebar-title{font-size:10.5px;font-weight:700;color:var(--c-text-soft);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.sidebar label{font-size:11px;color:var(--c-text-soft);font-weight:600;text-transform:uppercase;letter-spacing:.04em;display:block;margin:10px 0 4px}
+.sidebar label:first-of-type{margin-top:0}
+.sidebar input[type=text],.sidebar input[type=number],.sidebar select{width:100%;padding:6px 9px;border:1px solid var(--c-border);border-radius:3px;font-size:13px;background:#fff;color:var(--c-text);font-family:inherit}
+.sidebar input:focus,.sidebar select:focus{outline:none;border-color:var(--c-gold);box-shadow:0 0 0 2px rgba(167,122,0,.12)}
+.filter-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.sidebar-watchlist{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--c-text);cursor:pointer;margin-top:14px;user-select:none}
+.sidebar-watchlist input{accent-color:var(--c-gold);cursor:pointer}
+.facet-actions{font-size:10.5px;font-weight:600;text-transform:none;letter-spacing:0}
+.facet-actions a{color:var(--c-gold);cursor:pointer;text-decoration:none}
+.facet-actions a:hover{text-decoration:underline}
+.facet-list{flex:1;overflow-y:auto;border-top:1px solid var(--c-border);margin-top:6px}
+.facet-item{padding:7px 4px;cursor:pointer;border-bottom:1px solid #f5f2e8;display:flex;align-items:flex-start;gap:8px;font-size:12.5px;transition:background .08s}
+.facet-item:hover{background:#faf8f0}
+.facet-item input{margin-top:2px;flex-shrink:0;accent-color:var(--c-gold);cursor:pointer}
+.facet-item .fi-body{flex:1;min-width:0;overflow:hidden}
+.facet-item .fi-name{color:var(--c-earth);font-weight:600;white-space:normal;line-height:1.25}
+.facet-item .fi-count{color:var(--c-text-soft);font-size:11px;white-space:nowrap}
+.facet-empty{padding:14px 4px;color:var(--c-text-soft);font-size:12px}
+.sidebar-foot{padding:10px 14px;border-top:1px solid var(--c-border);display:flex;justify-content:space-between;align-items:center}
+.result-count{font-size:12px;color:var(--c-text-soft);font-weight:700}
+.clear-btn{background:transparent;border:1px solid var(--c-border);color:var(--c-text-soft);padding:4px 10px;font-size:11px;border-radius:3px;cursor:pointer;font-family:inherit;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.clear-btn:hover{color:var(--c-earth);border-color:var(--c-earth)}
+
+/* ---- Main ---- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column;height:calc(100vh - 60px)}
+.results-meta{padding:14px 18px 10px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.results-meta .rm-title{font-size:16px;font-weight:700;color:var(--c-earth)}
+.results-meta .rm-count{font-size:13px;color:var(--c-text-soft);font-weight:600}
+.results-meta .rm-filters{font-size:12px;color:var(--c-text-soft)}
+.note{padding:0 18px 8px;font-size:11.5px;color:var(--c-text-soft);font-style:italic}
+
+.table-scroll{flex:1;overflow:auto;margin:0 18px 18px;border:1px solid var(--c-border);border-radius:4px;background:var(--c-surface)}
+table.rt{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-variant-numeric:tabular-nums}
+table.rt thead th{position:sticky;top:0;z-index:5;background:var(--c-earth);color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:9px 12px;text-align:right;white-space:nowrap;cursor:pointer;user-select:none;border-bottom:2px solid var(--c-gold)}
+table.rt thead th.left{text-align:left}
+table.rt thead th:hover{background:var(--c-earth-soft)}
+table.rt thead th .arr{color:var(--c-gold-bright);margin-left:4px;font-size:10px}
+table.rt thead th.col-name{position:sticky;left:0;z-index:6;min-width:230px;max-width:330px}
+table.rt thead th.col-sector{min-width:200px;max-width:260px}
+table.rt tbody td{padding:6px 12px;height:34px;font-size:12.5px;border-bottom:1px solid #f1eee3;text-align:right;white-space:nowrap;color:var(--c-text);overflow:hidden}
+table.rt tbody td.col-name{position:sticky;left:0;z-index:1;background:var(--c-surface);text-align:left;font-weight:600;color:var(--c-earth);text-overflow:ellipsis;max-width:330px}
+table.rt tbody td.col-sector{text-align:left;color:var(--c-text-soft);text-overflow:ellipsis;max-width:260px}
+table.rt tbody tr:hover td{background:#faf8f0}
+table.rt tbody tr:hover td.col-name{background:#f4efe1}
+table.rt tbody td.spacer{position:static;padding:0;border:none;height:auto}
+table.rt td .neg{color:var(--c-danger)}
+table.rt td .muted{color:#bdb7a4}
+table.rt td .salyr{color:#bdb7a4;font-size:10.5px;margin-left:3px}
+.empty-state{padding:48px 24px;text-align:center;color:var(--c-text-soft);font-size:14px}
+
+/* ---- Loading overlay & toast ---- */
+.loading-overlay{position:fixed;inset:0;background:rgba(250,248,243,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2000;gap:14px}
+.spinner{width:40px;height:40px;border:4px solid var(--c-border);border-top-color:var(--c-gold);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-msg{font-size:13px;color:var(--c-text-soft);font-weight:600}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--c-earth);color:#fff;padding:10px 18px;border-radius:5px;font-size:13px;z-index:1500;box-shadow:0 6px 20px rgba(69,65,50,.3);border-left:3px solid var(--c-gold)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <img class="brand-logo" src="data:image/png;base64,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" alt="Confidentus">
+  <span class="topbar-title">Target Search</span>
+  <span class="topbar-sub">buy-side / sell-side screening</span>
+  <span class="topbar-refreshed" id="refreshed" title="Click to refresh from database" onclick="manualRefresh()"></span>
+  <span class="spacer"></span>
+  <button class="btn btn-primary" id="exportBtn" onclick="exportExcel()">Export to Excel</button>
+  <a class="btn btn-link" href="index.html">← Sector dashboard</a>
+</div>
+
+<div class="main-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">Search &amp; Filter</div>
+      <label>Company (name or JAR)</label>
+      <input type="text" id="f-search" placeholder="Search companies…" oninput="onSearchInput()">
+
+      <label>Municipality</label>
+      <select id="f-muni" onchange="scheduleScreen(0)">
+        <option value="">All municipalities</option>
+      </select>
+
+      <label>Filter year (revenue / EBT / margin)</label>
+      <select id="f-year" onchange="scheduleScreen(0)">
+        <option value="2025">2025</option>
+        <option value="2024" selected>2024</option>
+        <option value="2023">2023</option>
+        <option value="2022">2022</option>
+        <option value="2021">2021</option>
+        <option value="2020">2020</option>
+      </select>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Financial filters</div>
+      <label>Min employees (latest SODRA)</label>
+      <input type="number" id="f-emp" placeholder="e.g. 10" min="0" oninput="scheduleScreen()">
+
+      <label>Revenue (€)</label>
+      <div class="filter-row">
+        <input type="number" id="f-rev-min" placeholder="Min" oninput="scheduleScreen()">
+        <input type="number" id="f-rev-max" placeholder="Max" oninput="scheduleScreen()">
+      </div>
+
+      <label>EBT (€)</label>
+      <div class="filter-row">
+        <input type="number" id="f-ebt-min" placeholder="Min" oninput="scheduleScreen()">
+        <input type="number" id="f-ebt-max" placeholder="Max" oninput="scheduleScreen()">
+      </div>
+
+      <label>EBT margin %</label>
+      <div class="filter-row">
+        <input type="number" id="f-margin-min" placeholder="Min %" oninput="scheduleScreen()">
+        <input type="number" id="f-margin-max" placeholder="Max %" oninput="scheduleScreen()">
+      </div>
+
+      <label>Avg salary €/mo (latest SODRA)</label>
+      <div class="filter-row">
+        <input type="number" id="f-sal-min" placeholder="Min" oninput="scheduleScreen()">
+        <input type="number" id="f-sal-max" placeholder="Max" oninput="scheduleScreen()">
+      </div>
+
+      <label class="sidebar-watchlist">
+        <input type="checkbox" id="f-hide-inactive" checked onchange="scheduleScreen(0)">
+        <span>Hide inactive (no revenue in last 3 years)</span>
+      </label>
+    </div>
+
+    <div class="sidebar-section facet">
+      <div class="sidebar-title">
+        <span>Sectors in results</span>
+        <span class="facet-actions"><a onclick="facetAll()">all</a> · <a onclick="facetNone()">none</a></span>
+      </div>
+      <div class="facet-list" id="facetList"></div>
+    </div>
+
+    <div class="sidebar-foot">
+      <span class="result-count" id="resultCount">—</span>
+      <button class="clear-btn" onclick="clearFilters()">Clear</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="results-meta">
+      <span class="rm-title">Overview</span>
+      <span class="rm-count" id="rmCount"></span>
+      <span class="rm-filters" id="rmFilters"></span>
+    </div>
+    <div class="note" id="salaryNote">Avg salary uses each company's latest available SODRA year. Hover a salary to see the year. Blank cells = no filing.</div>
+    <div class="table-scroll" id="tableScroll">
+      <table class="rt" id="rtable">
+        <thead id="rthead"></thead>
+        <tbody id="rtbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-msg" id="loadingMsg">Loading…</div>
+</div>
+
+<script>
+/* ==========================================================
+ *  Configuration  (shared with the main dashboard)
+ * ========================================================== */
+const SUPABASE_URL = 'https://fxapkoylegdibrhsajbo.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_gZir2IvzDxdf39kOzAmVGQ_PKK4pKdA';
+const CACHE_TTL = 12 * 60 * 60 * 1000;
+const PAGE_SIZE = 5000;
+const FIN_YEARS = [2021, 2022, 2023, 2024, 2025];     // columns shown in the table
+let FIN_LATEST_YEAR = 2024, FIN_PREV_YEAR = 2023, SODRA_LATEST_YEAR = 2025, SODRA_PREV_YEAR = 2024;
+let FIN_LATEST_IS_PARTIAL = false, FIN_LATEST_FILING_RATE = null;
+const ROW_H = 34;        // fixed row height for virtualization
+const ROW_BUFFER = 8;    // extra rows rendered above/below the viewport
+
+/* ==========================================================
+ *  State
+ * ========================================================== */
+const state = {
+  allCompanies: [],          // [{jar_kodas, name, evrk_code, evrk_name, legal_form, municipality}]
+  financials: {},            // {jar: [{year, revenue, ebt, net_profit}]}
+  sodra: {},                 // {jar: {year: {avg_employees, avg_salary}}}
+  sectorOptions: [],
+  municipalities: [],
+  lastRefreshTs: null,
+  dataLoaded: false,
+
+  filters: {},
+  results: [],               // row objects after criteria (before facet)
+  facet: [],                 // [{evrk_code, evrk_name, count}]
+  excludedSectors: new Set(),// sectors unticked in the facet
+  display: [],               // rows after facet + name-search + sort
+  sortCol: 'rev_' + 2024,
+  sortDir: 'desc'
+};
+
+/* ==========================================================
+ *  Helpers
+ * ========================================================== */
+function fmtEUR(n) {
+  if (n == null || isNaN(n)) return '—';
+  return Math.round(n).toLocaleString('en-US');
+}
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function num(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const v = el.value;
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+/* ==========================================================
+ *  Supabase fetch  (verbatim from dashboard — keyset pagination)
+ * ========================================================== */
+async function sbFetch(path, extraHeaders) {
+  const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  const res = await fetch(url, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Accept': 'application/json', ...(extraHeaders || {}) }
+  });
+  if (!res.ok) { const text = await res.text(); throw new Error(`Supabase ${res.status}: ${text.slice(0,200)}`); }
+  const data = await res.json();
+  return { data, headers: res.headers };
+}
+
+async function sbFetchAll(path, onProgress, cursorCol = 'jar_kodas') {
+  const results = [];
+  let cursor = null, total = null, firstPage = true, guard = 0;
+  while (true) {
+    const sep = path.includes('?') ? '&' : '?';
+    let pageUrl = `${path}${sep}limit=${PAGE_SIZE}`;
+    if (cursor !== null) pageUrl += `&${cursorCol}=gt.${encodeURIComponent(cursor)}`;
+    const headers = firstPage ? { 'Prefer': 'count=exact' } : {};
+    const { data, headers: resHeaders } = await sbFetch(pageUrl, headers);
+    if (firstPage) {
+      const cr = resHeaders.get('content-range');
+      if (cr) { const m = cr.match(/\/(\d+|\*)$/); if (m && m[1] !== '*') total = parseInt(m[1]); }
+      firstPage = false;
+    }
+    if (data.length === 0) break;
+    const lastVal = data[data.length - 1][cursorCol];
+    if (data.length < PAGE_SIZE) { results.push(...data); if (onProgress) onProgress(results.length, total); break; }
+    let cut = data.length;
+    while (cut > 0 && data[cut - 1][cursorCol] === lastVal) cut--;
+    if (cut === 0) { results.push(...data); cursor = lastVal; }
+    else { results.push(...data.slice(0, cut)); cursor = data[cut - 1][cursorCol]; }
+    if (onProgress) onProgress(results.length, total);
+    if (++guard > 100000) break;
+  }
+  return results;
+}
+
+/* ==========================================================
+ *  SODRA lazy-loader  (verbatim from dashboard)
+ * ========================================================== */
+const SODRA_BATCH_SIZE = 500;
+const sodraFetchedJars = new Set();
+const sodraInflight = new Map();
+
+async function ensureSodraLoaded(jarCodes, onProgress) {
+  const toFetch = [], pendingPromises = [];
+  for (const jar of jarCodes) {
+    if (!jar) continue;
+    if (sodraFetchedJars.has(jar)) continue;
+    if (sodraInflight.has(jar)) { pendingPromises.push(sodraInflight.get(jar)); continue; }
+    toFetch.push(jar);
+  }
+  if (toFetch.length === 0) { if (pendingPromises.length) await Promise.all(pendingPromises); return; }
+  const batches = [];
+  for (let i = 0; i < toFetch.length; i += SODRA_BATCH_SIZE) batches.push(toFetch.slice(i, i + SODRA_BATCH_SIZE));
+  const batchPromises = batches.map((batch) => {
+    const promise = (async () => {
+      const jarFilter = `in.(${batch.join(',')})`;
+      const path = `sodra_workforce?select=jar_kodas,period_year,employees_avg,avg_salary&jar_kodas=${encodeURIComponent(jarFilter)}&order=jar_kodas,period_year`;
+      const rows = await sbFetchAll(path);
+      const sByCompanyYear = {};
+      for (const s of rows) {
+        if (!s.period_year) continue;
+        const y = s.period_year, k = s.jar_kodas;
+        if (!sByCompanyYear[k]) sByCompanyYear[k] = {};
+        if (!sByCompanyYear[k][y]) sByCompanyYear[k][y] = { emps: [], sals: [] };
+        if (s.employees_avg != null) sByCompanyYear[k][y].emps.push(s.employees_avg);
+        if (s.avg_salary != null && s.avg_salary > 0) sByCompanyYear[k][y].sals.push(s.avg_salary);
+      }
+      for (const k in sByCompanyYear) {
+        if (!state.sodra[k]) state.sodra[k] = {};
+        for (const y in sByCompanyYear[k]) {
+          const { emps, sals } = sByCompanyYear[k][y];
+          state.sodra[k][y] = {
+            avg_employees: emps.length ? emps.reduce((a,b)=>a+b,0)/emps.length : null,
+            avg_salary:    sals.length ? sals.reduce((a,b)=>a+b,0)/sals.length : null
+          };
+        }
+      }
+      for (const jar of batch) sodraFetchedJars.add(jar);
+    })();
+    for (const jar of batch) sodraInflight.set(jar, promise);
+    promise.finally(() => { for (const jar of batch) sodraInflight.delete(jar); });
+    return promise;
+  });
+  if (onProgress) {
+    let done = 0; const total = batches.length;
+    for (const p of batchPromises) p.then(() => { done += 1; onProgress(done, total); }).catch(()=>{});
+  }
+  await Promise.all([...batchPromises, ...pendingPromises]);
+  scheduleCacheSave();
+  computeLatestYears();
+}
+
+let cacheSaveTimer = null;
+function scheduleCacheSave() {
+  if (cacheSaveTimer) clearTimeout(cacheSaveTimer);
+  cacheSaveTimer = setTimeout(() => { saveCache().catch(e => console.warn('Cache save failed', e)); }, 1500);
+}
+
+/* ==========================================================
+ *  IndexedDB cache  (shared store companydb_v3 with the dashboard)
+ * ========================================================== */
+const IDB_NAME = 'companydb_v3', IDB_STORE = 'dataset', IDB_KEY = 'snapshot';
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbGet(key) {
+  try { const db = await idbOpen();
+    return await new Promise((resolve, reject) => { const tx = db.transaction(IDB_STORE, 'readonly'); const req = tx.objectStore(IDB_STORE).get(key); req.onsuccess = () => resolve(req.result || null); req.onerror = () => reject(req.error); });
+  } catch(e) { console.warn('idbGet failed:', e); return null; }
+}
+async function idbSet(key, value) {
+  try { const db = await idbOpen();
+    return await new Promise((resolve, reject) => { const tx = db.transaction(IDB_STORE, 'readwrite'); tx.objectStore(IDB_STORE).put(value, key); tx.oncomplete = () => resolve(true); tx.onerror = () => reject(tx.error); });
+  } catch(e) { console.warn('idbSet failed:', e); return false; }
+}
+async function loadCache() { return await idbGet(IDB_KEY); }
+async function saveCache() {
+  const payload = { ts: state.lastRefreshTs || Date.now(), allCompanies: state.allCompanies, financials: state.financials, sodra: state.sodra };
+  const ok = await idbSet(IDB_KEY, payload);
+  if (ok) console.log('Cache saved at', new Date(payload.ts).toISOString());
+  return ok;
+}
+
+/* ==========================================================
+ *  Derived years  (verbatim logic from dashboard)
+ * ========================================================== */
+function computeLatestYears() {
+  const countsByYear = {};
+  for (const jar in state.financials)
+    for (const f of state.financials[jar])
+      if (f.revenue != null && f.revenue > 0) countsByYear[f.year] = (countsByYear[f.year] || 0) + 1;
+  const sortedYears = Object.keys(countsByYear).map(Number).sort((a, b) => b - a);
+  const THRESH = 0.50;
+  let latestFin = null, rawLatest = null, rawLatestRate = null;
+  for (let i = 0; i < sortedYears.length - 1; i++) {
+    const y = sortedYears[i], prevCount = countsByYear[sortedYears[i + 1]];
+    const ratio = prevCount > 0 ? (countsByYear[y] / prevCount) : 1;
+    if (rawLatest === null) { rawLatest = y; rawLatestRate = ratio; }
+    if (ratio >= THRESH) { latestFin = y; break; }
+  }
+  if (latestFin === null) latestFin = sortedYears[0] || 2024;
+  const prevFin = sortedYears.find(y => y < latestFin) || (latestFin - 1);
+  FIN_LATEST_YEAR = latestFin; FIN_PREV_YEAR = prevFin;
+  FIN_LATEST_IS_PARTIAL = (rawLatest !== null && rawLatest > latestFin);
+  FIN_LATEST_FILING_RATE = rawLatestRate;
+  let latestSo = 2015, prevSo = 2014;
+  for (const jar in state.sodra) for (const y in state.sodra[jar]) {
+    const yy = parseInt(y);
+    if (yy > latestSo) { prevSo = latestSo; latestSo = yy; }
+    else if (yy > prevSo && yy < latestSo) prevSo = yy;
+  }
+  SODRA_LATEST_YEAR = latestSo; SODRA_PREV_YEAR = prevSo;
+}
+
+/* ==========================================================
+ *  Options builders
+ * ========================================================== */
+function buildSectorOptions() {
+  const m = {};
+  for (const c of state.allCompanies) {
+    if (!c.evrk_code) continue;
+    const k = c.evrk_code;
+    if (!m[k]) m[k] = { evrk_code: k, evrk_name: c.evrk_name || k, count: 0 };
+    m[k].count++;
+  }
+  state.sectorOptions = Object.values(m).sort((a,b) => b.count - a.count);
+}
+function buildMunicipalityOptions() {
+  const s = new Set();
+  for (const c of state.allCompanies) if (c.municipality) s.add(c.municipality);
+  state.municipalities = [...s].sort((a,b)=>a.localeCompare(b,'lt'));
+  const sel = document.getElementById('f-muni');
+  if (sel) sel.innerHTML = '<option value="">All municipalities</option>' +
+    state.municipalities.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+}
+function seedSodraFetchedFromState() { for (const jar in state.sodra) sodraFetchedJars.add(jar); }
+
+/* ==========================================================
+ *  Per-company / per-year accessors
+ * ========================================================== */
+function finForYear(jar, year) { return (state.financials[jar] || []).find(f => f.year === year) || null; }
+function revenueOf(jar, year) { const f = finForYear(jar, year); return f ? f.revenue : null; }
+function ebtOf(jar, year) { const f = finForYear(jar, year); return f ? f.ebt : null; }
+function marginOf(jar, year) { const f = finForYear(jar, year); return (f && f.revenue && f.revenue > 0 && f.ebt != null) ? (f.ebt / f.revenue) * 100 : null; }
+// Latest available SODRA salary / employees for a company (max year with a value)
+function latestSodra(jar, field) {
+  const s = state.sodra[jar]; if (!s) return null;
+  let best = null;
+  for (const y in s) { const yy = parseInt(y); if (s[y][field] != null && (best === null || yy > best.year)) best = { year: yy, value: s[y][field] }; }
+  return best;
+}
+function latestSalary(jar) { return latestSodra(jar, 'avg_salary'); }
+function latestEmployees(jar) { const r = latestSodra(jar, 'avg_employees'); return r ? r.value : null; }
+
+/* ==========================================================
+ *  Data loading
+ * ========================================================== */
+async function loadAllData() {
+  const cached = await loadCache();
+  if (cached) {
+    const seen = new Set(); const dedup = [];
+    for (const c of (cached.allCompanies || [])) { if (seen.has(c.jar_kodas)) continue; seen.add(c.jar_kodas); dedup.push(c); }
+    state.allCompanies = dedup;
+    state.financials = cached.financials || {};
+    state.sodra = cached.sodra || {};
+    state.lastRefreshTs = cached.ts;
+    seedSodraFetchedFromState();
+    buildSectorOptions(); buildMunicipalityOptions(); computeLatestYears();
+    state.dataLoaded = true;
+    return { fromCache: true, cachedAt: cached.ts };
+  }
+  await fetchAndInstallData(false);
+  state.dataLoaded = true;
+  return { fromCache: false };
+}
+
+async function fetchAndInstallData(background) {
+  const fmt = (n) => n.toLocaleString();
+  const setMsg = (m) => { if (!background) setLoading(m); };
+  const progressFor = (label) => (loaded, total) => {
+    if (background) return;
+    setLoading(total ? `${label} — ${fmt(loaded)} / ${fmt(total)} (${Math.min(100,Math.round(loaded/total*100))}%)` : `${label} — ${fmt(loaded)} loaded…`);
+  };
+  setMsg('Loading companies…');
+  const companies = await sbFetchAll(
+    'companies?select=jar_kodas,company_name,evrk_code,evrk_name,legal_form,municipality&order=jar_kodas',
+    progressFor('Loading companies'));
+  const seen = new Set(); const normalized = [];
+  for (const c of companies) {
+    if (seen.has(c.jar_kodas)) continue; seen.add(c.jar_kodas);
+    normalized.push({ jar_kodas: c.jar_kodas, name: c.company_name || '', evrk_code: c.evrk_code, evrk_name: c.evrk_name, legal_form: c.legal_form, municipality: c.municipality || '' });
+  }
+  setMsg('Loading financials…');
+  const fins = await sbFetchAll('financials?select=jar_kodas,fin_year,revenue,ebt,net_profit&order=jar_kodas,fin_year', progressFor('Loading financials'));
+  const byJar = {};
+  for (const f of fins) {
+    (byJar[f.jar_kodas] = byJar[f.jar_kodas] || []).push({ jar_kodas: f.jar_kodas, year: f.fin_year, revenue: f.revenue, ebt: f.ebt, net_profit: f.net_profit });
+  }
+  for (const k in byJar) byJar[k].sort((a,b) => a.year - b.year);
+  state.allCompanies = normalized;
+  state.financials = byJar;
+  if (!state.sodra || typeof state.sodra !== 'object') state.sodra = {};
+  state.lastRefreshTs = Date.now();
+  buildSectorOptions(); buildMunicipalityOptions(); computeLatestYears();
+  await saveCache();
+  updateRefreshedIndicator();
+}
+
+async function manualRefresh() {
+  setLoading('Refreshing from database…');
+  showOverlay();
+  try { await fetchAndInstallData(false); scheduleScreen(0); showToast('Data refreshed'); }
+  catch(e) { console.error(e); showToast('Refresh failed: ' + e.message); }
+  finally { hideOverlay(); }
+}
+
+/* ==========================================================
+ *  UI helpers
+ * ========================================================== */
+function setLoading(m){ const el=document.getElementById('loadingMsg'); if(el) el.textContent=m; }
+function showOverlay(){ const o=document.getElementById('loadingOverlay'); if(o) o.style.display='flex'; }
+function hideOverlay(){ const o=document.getElementById('loadingOverlay'); if(o) o.style.display='none'; }
+let toastEl=null;
+function showToast(msg){ hideToast(); toastEl=document.createElement('div'); toastEl.className='toast'; toastEl.textContent=msg; document.body.appendChild(toastEl); return toastEl; }
+function hideToast(){ if(toastEl){ toastEl.remove(); toastEl=null; } }
+function updateRefreshedIndicator(){
+  const el=document.getElementById('refreshed'); if(!el) return;
+  if(!state.lastRefreshTs){ el.textContent=''; return; }
+  const mins=Math.round((Date.now()-state.lastRefreshTs)/60000);
+  el.textContent = mins<1 ? 'updated just now' : mins<60 ? `updated ${mins}m ago` : `updated ${Math.round(mins/60)}h ago`;
+}
+setInterval(updateRefreshedIndicator, 60000);
+
+/* ==========================================================
+ *  Screening
+ * ========================================================== */
+function readFilters() {
+  state.filters = {
+    search: (document.getElementById('f-search')?.value || '').toLowerCase().trim(),
+    muni: document.getElementById('f-muni')?.value || '',
+    year: parseInt(document.getElementById('f-year')?.value || '2024') || 2024,
+    minEmp: num('f-emp'),
+    minRev: num('f-rev-min'), maxRev: num('f-rev-max'),
+    minEbt: num('f-ebt-min'), maxEbt: num('f-ebt-max'),
+    minMargin: num('f-margin-min'), maxMargin: num('f-margin-max'),
+    minSal: num('f-sal-min'), maxSal: num('f-sal-max'),
+    hideInactive: !!document.getElementById('f-hide-inactive')?.checked
+  };
+}
+
+let screenTimer = null;
+function scheduleScreen(delay = 300) {
+  if (screenTimer) clearTimeout(screenTimer);
+  screenTimer = setTimeout(runScreen, delay);
+}
+
+async function runScreen() {
+  if (!state.dataLoaded) return;
+  readFilters();
+  const f = state.filters, y = f.year;
+
+  // Stage 1 — filters that need only financials (fast, full universe).
+  let base = state.allCompanies.filter(c => {
+    if (f.hideInactive) {
+      let active = false;
+      for (let yy = FIN_LATEST_YEAR; yy > FIN_LATEST_YEAR - 3; yy--) { const r = revenueOf(c.jar_kodas, yy); if (r != null && r > 0) { active = true; break; } }
+      if (!active) return false;
+    }
+    if (f.muni && c.municipality !== f.muni) return false;
+    if (f.minRev != null || f.maxRev != null) { const r = revenueOf(c.jar_kodas, y); if (r == null) return false; if (f.minRev != null && r < f.minRev) return false; if (f.maxRev != null && r > f.maxRev) return false; }
+    if (f.minEbt != null || f.maxEbt != null) { const e = ebtOf(c.jar_kodas, y); if (e == null) return false; if (f.minEbt != null && e < f.minEbt) return false; if (f.maxEbt != null && e > f.maxEbt) return false; }
+    if (f.minMargin != null || f.maxMargin != null) { const m = marginOf(c.jar_kodas, y); if (m == null) return false; if (f.minMargin != null && m < f.minMargin) return false; if (f.maxMargin != null && m > f.maxMargin) return false; }
+    return true;
+  });
+
+  // Stage 2 — SODRA-dependent filters (emp / salary). Load SODRA only for the candidate set.
+  const needsSodra = (f.minEmp != null) || (f.minSal != null) || (f.maxSal != null);
+  if (needsSodra && base.length) {
+    const t = showToast(`Loading workforce data for ${base.length.toLocaleString()} companies…`);
+    try { await ensureSodraLoaded(base.map(c => c.jar_kodas)); } catch(e) { console.warn(e); } finally { hideToast(); }
+    base = base.filter(c => {
+      if (f.minEmp != null) { const e = latestEmployees(c.jar_kodas); if (e == null || e < f.minEmp) return false; }
+      if (f.minSal != null || f.maxSal != null) { const s = latestSalary(c.jar_kodas); if (!s) return false; if (f.minSal != null && s.value < f.minSal) return false; if (f.maxSal != null && s.value > f.maxSal) return false; }
+      return true;
+    });
+  }
+
+  // Build row objects once.
+  state.results = base.map(c => {
+    const row = { jar: c.jar_kodas, name: c.name, evrk_code: c.evrk_code, evrk_name: c.evrk_name || c.evrk_code || '' };
+    for (const yr of FIN_YEARS) { row['rev_' + yr] = revenueOf(c.jar_kodas, yr); row['ebt_' + yr] = ebtOf(c.jar_kodas, yr); }
+    return row;
+  });
+
+  buildFacet();
+  renderFacet();
+  applyDisplay();
+}
+
+function buildFacet() {
+  const m = {};
+  for (const r of state.results) {
+    const k = r.evrk_code || '∅';
+    if (!m[k]) m[k] = { evrk_code: r.evrk_code, evrk_name: r.evrk_name || '(no sector)', count: 0 };
+    m[k].count++;
+  }
+  state.facet = Object.values(m).sort((a,b) => b.count - a.count);
+  // Drop exclusions for sectors no longer present (keep the rest sticky across re-screens)
+  const present = new Set(state.facet.map(s => s.evrk_code));
+  for (const code of [...state.excludedSectors]) if (!present.has(code)) state.excludedSectors.delete(code);
+}
+
+function renderFacet() {
+  const list = document.getElementById('facetList');
+  if (!state.facet.length) { list.innerHTML = '<div class="facet-empty">No companies match the current filters.</div>'; return; }
+  list.innerHTML = state.facet.map(s => {
+    const checked = !state.excludedSectors.has(s.evrk_code);
+    const key = JSON.stringify(s.evrk_code).replace(/"/g, '&quot;');
+    return `<label class="facet-item">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleSector(${key})">
+      <span class="fi-body"><span class="fi-name">${escapeHtml(s.evrk_name)}</span></span>
+      <span class="fi-count">${s.count.toLocaleString()}</span>
+    </label>`;
+  }).join('');
+}
+function toggleSector(code) {
+  if (state.excludedSectors.has(code)) state.excludedSectors.delete(code);
+  else state.excludedSectors.add(code);
+  applyDisplay();
+}
+function facetAll() { state.excludedSectors.clear(); renderFacet(); applyDisplay(); }
+function facetNone() { state.excludedSectors = new Set(state.facet.map(s => s.evrk_code)); renderFacet(); applyDisplay(); }
+
+function onSearchInput() { state.filters.search = (document.getElementById('f-search')?.value || '').toLowerCase().trim(); applyDisplay(); }
+
+// Apply facet exclusions + name search + current sort, then render.
+function applyDisplay() {
+  const search = state.filters.search || '';
+  let rows = state.results.filter(r => !state.excludedSectors.has(r.evrk_code));
+  if (search) rows = rows.filter(r => (r.name + ' ' + r.jar).toLowerCase().includes(search));
+  sortRows(rows);
+  state.display = rows;
+  renderMeta();
+  renderHead();
+  setupVirtual();
+}
+
+/* ==========================================================
+ *  Sorting
+ * ========================================================== */
+function sortValue(row, col) {
+  if (col === 'name') return row.name || '';
+  if (col === 'sector') return row.evrk_name || '';
+  if (col === 'salary') { const s = latestSalary(row.jar); return s ? s.value : null; }
+  return row[col]; // rev_YYYY / ebt_YYYY
+}
+function sortRows(rows) {
+  const col = state.sortCol, dir = state.sortDir;
+  const isText = (col === 'name' || col === 'sector');
+  rows.sort((a, b) => {
+    const va = sortValue(a, col), vb = sortValue(b, col);
+    const na = (va == null || (typeof va === 'number' && isNaN(va)) || va === '');
+    const nb = (vb == null || (typeof vb === 'number' && isNaN(vb)) || vb === '');
+    if (na && nb) return 0;
+    if (na) return 1;            // blanks always last
+    if (nb) return -1;
+    let r = isText ? String(va).localeCompare(String(vb), 'lt') : (va - vb);
+    return dir === 'asc' ? r : -r;
+  });
+}
+async function sortBy(col) {
+  if (col === 'salary') {
+    // Salary sort needs the value for every displayed row → ensure SODRA loaded.
+    const need = state.display.filter(r => !sodraFetchedJars.has(r.jar)).map(r => r.jar);
+    if (need.length) { const t = showToast(`Loading salary data for ${need.length.toLocaleString()} companies…`); try { await ensureSodraLoaded(need); } finally { hideToast(); } }
+  }
+  if (state.sortCol === col) state.sortDir = (state.sortDir === 'asc' ? 'desc' : 'asc');
+  else { state.sortCol = col; state.sortDir = (col === 'name' || col === 'sector') ? 'asc' : 'desc'; }
+  applyDisplay();
+}
+
+/* ==========================================================
+ *  Table rendering (virtualized)
+ * ========================================================== */
+function colDefs() {
+  const cols = [
+    { key: 'name', label: 'Company', cls: 'col-name left' },
+    { key: 'sector', label: 'Sector (EVRK)', cls: 'col-sector left' }
+  ];
+  for (const y of FIN_YEARS) cols.push({ key: 'rev_' + y, label: 'Sales ' + y, cls: '' });
+  for (const y of FIN_YEARS) cols.push({ key: 'ebt_' + y, label: 'EBT ' + y, cls: '' });
+  cols.push({ key: 'salary', label: 'Avg salary (latest)', cls: '' });
+  return cols;
+}
+function renderHead() {
+  const head = document.getElementById('rthead');
+  const arrow = state.sortDir === 'asc' ? '▲' : '▼';
+  head.innerHTML = '<tr>' + colDefs().map(c => {
+    const active = state.sortCol === c.key;
+    return `<th class="${c.cls}" onclick="sortBy('${c.key}')" title="Sort by ${escapeHtml(c.label)}">${escapeHtml(c.label)}${active ? `<span class="arr">${arrow}</span>` : ''}</th>`;
+  }).join('') + '</tr>';
+}
+function renderMeta() {
+  const total = state.display.length, all = state.results.length;
+  document.getElementById('rmCount').textContent =
+    all === total ? `${total.toLocaleString()} companies` : `${total.toLocaleString()} of ${all.toLocaleString()} companies`;
+  document.getElementById('resultCount').textContent = `${total.toLocaleString()} co.`;
+  const f = state.filters, parts = [];
+  parts.push(`year ${f.year}`);
+  if (f.muni) parts.push(f.muni);
+  if (f.minRev != null || f.maxRev != null) parts.push(`Rev ${f.minRev != null ? '€' + fmtEUR(f.minRev) : ''}${(f.minRev!=null&&f.maxRev!=null)?'–':''}${f.maxRev != null ? '€' + fmtEUR(f.maxRev) : ''}`);
+  if (f.minEbt != null || f.maxEbt != null) parts.push(`EBT ${f.minEbt != null ? '€' + fmtEUR(f.minEbt) : ''}${(f.minEbt!=null&&f.maxEbt!=null)?'–':''}${f.maxEbt != null ? '€' + fmtEUR(f.maxEbt) : ''}`);
+  if (f.minMargin != null || f.maxMargin != null) parts.push(`Margin ${f.minMargin != null ? f.minMargin + '%' : ''}${(f.minMargin!=null&&f.maxMargin!=null)?'–':''}${f.maxMargin != null ? f.maxMargin + '%' : ''}`);
+  if (f.minSal != null || f.maxSal != null) parts.push(`Salary ${f.minSal != null ? '€' + fmtEUR(f.minSal) : ''}${(f.minSal!=null&&f.maxSal!=null)?'–':''}${f.maxSal != null ? '€' + fmtEUR(f.maxSal) : ''}`);
+  if (f.minEmp != null) parts.push(`Emp ≥ ${f.minEmp}`);
+  document.getElementById('rmFilters').textContent = 'Filters: ' + parts.join(' · ');
+}
+
+function cellNum(v) {
+  if (v == null || isNaN(v)) return '<span class="muted">—</span>';
+  return v < 0 ? `<span class="neg">${fmtEUR(v)}</span>` : fmtEUR(v);
+}
+function salaryCell(jar) {
+  if (!sodraFetchedJars.has(jar)) return '<span class="muted">…</span>';
+  const s = latestSalary(jar);
+  if (!s) return '<span class="muted">—</span>';
+  return `${fmtEUR(s.value)}<span class="salyr">'${String(s.year).slice(2)}</span>`;
+}
+function rowHtml(r) {
+  let tds = `<td class="col-name" title="${escapeHtml(r.name)} · JAR ${escapeHtml(r.jar)}">${escapeHtml(r.name)}</td>`;
+  tds += `<td class="col-sector" title="${escapeHtml(r.evrk_name)}">${escapeHtml(r.evrk_name)}</td>`;
+  for (const y of FIN_YEARS) tds += `<td>${cellNum(r['rev_' + y])}</td>`;
+  for (const y of FIN_YEARS) tds += `<td>${cellNum(r['ebt_' + y])}</td>`;
+  tds += `<td title="latest available SODRA year">${salaryCell(r.jar)}</td>`;
+  return `<tr>${tds}</tr>`;
+}
+
+let virtualScrollBound = false;
+function setupVirtual() {
+  const scroller = document.getElementById('tableScroll');
+  if (!virtualScrollBound) { scroller.addEventListener('scroll', renderWindow, { passive: true }); virtualScrollBound = true; }
+  renderWindow();
+}
+let lazyGuard = false;
+function renderWindow() {
+  const scroller = document.getElementById('tableScroll');
+  const tbody = document.getElementById('rtbody');
+  const rows = state.display;
+  const nCols = colDefs().length;
+  if (!rows.length) { tbody.innerHTML = `<tr><td class="spacer" colspan="${nCols}"><div class="empty-state">No companies match. Adjust the filters or re-tick sectors.</div></td></tr>`; return; }
+
+  const viewH = scroller.clientHeight || 600;
+  const scrollTop = scroller.scrollTop;
+  let start = Math.floor(scrollTop / ROW_H) - ROW_BUFFER;
+  let end = Math.ceil((scrollTop + viewH) / ROW_H) + ROW_BUFFER;
+  start = Math.max(0, start);
+  end = Math.min(rows.length, end);
+
+  const visible = rows.slice(start, end);
+  const topPad = start * ROW_H;
+  const botPad = (rows.length - end) * ROW_H;
+
+  let html = '';
+  if (topPad > 0) html += `<tr><td class="spacer" colspan="${nCols}" style="height:${topPad}px"></td></tr>`;
+  html += visible.map(rowHtml).join('');
+  if (botPad > 0) html += `<tr><td class="spacer" colspan="${nCols}" style="height:${botPad}px"></td></tr>`;
+  tbody.innerHTML = html;
+
+  // Lazy-load SODRA for the visible rows so the salary column fills in.
+  if (!lazyGuard) {
+    const need = visible.filter(r => !sodraFetchedJars.has(r.jar)).map(r => r.jar);
+    if (need.length) {
+      lazyGuard = true;
+      ensureSodraLoaded(need).then(() => { lazyGuard = false; renderWindow(); }).catch(() => { lazyGuard = false; });
+    }
+  }
+}
+
+/* ==========================================================
+ *  Clear
+ * ========================================================== */
+function clearFilters() {
+  ['f-search','f-emp','f-rev-min','f-rev-max','f-ebt-min','f-ebt-max','f-margin-min','f-margin-max','f-sal-min','f-sal-max']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const muni = document.getElementById('f-muni'); if (muni) muni.value = '';
+  const yr = document.getElementById('f-year'); if (yr) yr.value = String(FIN_LATEST_YEAR);
+  const hi = document.getElementById('f-hide-inactive'); if (hi) hi.checked = true;
+  state.excludedSectors.clear();
+  runScreen();
+}
+
+/* ==========================================================
+ *  Excel export
+ * ========================================================== */
+const EX = { EARTH:'FF454132', EARTH_LIGHT:'FF6A6552', GOLD:'FFA77A00', BG_ZEBRA:'FFF5F2E8', TEXT:'FF2A2820', WHITE:'FFFFFFFF' };
+const thinBorder = { top:{style:'thin',color:{argb:'FFE5E1D5'}}, left:{style:'thin',color:{argb:'FFE5E1D5'}}, bottom:{style:'thin',color:{argb:'FFE5E1D5'}}, right:{style:'thin',color:{argb:'FFE5E1D5'}} };
+
+async function exportExcel() {
+  if (!state.display.length) { showToast('Nothing to export — adjust filters.'); return; }
+  const t = showToast('Preparing salary data for export…');
+  try {
+    const need = state.display.filter(r => !sodraFetchedJars.has(r.jar)).map(r => r.jar);
+    if (need.length) await ensureSodraLoaded(need);
+  } finally { hideToast(); }
+
+  // Re-sort with full salary data now available (in case sorted by salary).
+  sortRows(state.display);
+
+  const t2 = showToast('Building Excel…');
+  try {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Confidentus CompanyDB'; wb.created = new Date();
+    const sheet = wb.addWorksheet('Targets', { properties: { defaultRowHeight: 16 }, views: [{ showGridLines: false, state: 'frozen', xSplit: 1, ySplit: 6 }] });
+
+    sheet.columns = [{ width: 44 }, { width: 34 }]
+      .concat(FIN_YEARS.map(() => ({ width: 15 })))   // sales
+      .concat(FIN_YEARS.map(() => ({ width: 15 })))   // ebt
+      .concat([{ width: 16 }, { width: 11 }]);        // salary + salary year
+    const nCols = 2 + FIN_YEARS.length * 2 + 2;
+
+    // Logo
+    try { const imgId = wb.addImage({ base64: document.querySelector('.brand-logo').src, extension: 'png' });
+      sheet.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 150, height: 28 } }); } catch(e) {}
+
+    // Title
+    const titleRow = sheet.addRow(['TARGET SEARCH — company screen']);
+    sheet.mergeCells(titleRow.number, 1, titleRow.number, nCols);
+    sheet.getCell(titleRow.number, 1).font = { name:'Calibri', size:15, bold:true, color:{argb:EX.EARTH} };
+    titleRow.height = 22;
+
+    const f = state.filters; const parts = [`Filter year ${f.year}`];
+    if (f.muni) parts.push(f.muni);
+    if (f.minRev != null || f.maxRev != null) parts.push(`Revenue ${f.minRev ?? ''}–${f.maxRev ?? ''}`);
+    if (f.minEbt != null || f.maxEbt != null) parts.push(`EBT ${f.minEbt ?? ''}–${f.maxEbt ?? ''}`);
+    if (f.minMargin != null || f.maxMargin != null) parts.push(`Margin ${f.minMargin ?? ''}%–${f.maxMargin ?? ''}%`);
+    if (f.minSal != null || f.maxSal != null) parts.push(`Salary ${f.minSal ?? ''}–${f.maxSal ?? ''}`);
+    if (f.minEmp != null) parts.push(`Min employees ${f.minEmp}`);
+    const subRow = sheet.addRow([parts.join('  ·  ')]);
+    sheet.mergeCells(subRow.number, 1, subRow.number, nCols);
+    sheet.getCell(subRow.number, 1).font = { name:'Calibri', size:10.5, italic:true, color:{argb:EX.EARTH_LIGHT} };
+
+    const metaRow = sheet.addRow([`${state.display.length.toLocaleString()} companies · exported ${new Date().toISOString().slice(0,10)} · amounts in €`]);
+    sheet.mergeCells(metaRow.number, 1, metaRow.number, nCols);
+    sheet.getCell(metaRow.number, 1).font = { name:'Calibri', size:10, color:{argb:EX.EARTH_LIGHT} };
+    sheet.addRow([]);
+
+    // Header
+    const headers = ['Company', 'Sector (EVRK)']
+      .concat(FIN_YEARS.map(y => 'Sales ' + y))
+      .concat(FIN_YEARS.map(y => 'EBT ' + y))
+      .concat(['Avg salary (latest)', 'Salary year']);
+    const hr = sheet.addRow(headers);
+    headers.forEach((h, i) => {
+      const cell = sheet.getCell(hr.number, i + 1);
+      cell.font = { name:'Calibri', size:10.5, bold:true, color:{argb:EX.WHITE} };
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:EX.EARTH} };
+      cell.alignment = { vertical:'middle', horizontal: i < 2 ? 'left' : 'right', wrapText:true };
+      cell.border = { ...thinBorder, bottom:{ style:'medium', color:{argb:EX.GOLD} } };
+    });
+    hr.height = 24;
+
+    const firstData = hr.number + 1;
+    for (const r of state.display) {
+      const sal = latestSalary(r.jar);
+      const vals = [r.name, r.evrk_name];
+      for (const y of FIN_YEARS) vals.push(r['rev_' + y] != null ? r['rev_' + y] : null);
+      for (const y of FIN_YEARS) vals.push(r['ebt_' + y] != null ? r['ebt_' + y] : null);
+      vals.push(sal ? sal.value : null);
+      vals.push(sal ? sal.year : null);
+      const row = sheet.addRow(vals);
+      vals.forEach((v, i) => {
+        const cell = sheet.getCell(row.number, i + 1);
+        cell.font = { name:'Calibri', size:11, color:{argb:EX.TEXT} };
+        cell.border = thinBorder;
+        if (i >= 2) { cell.alignment = { horizontal:'right' }; if (i < nCols - 1) cell.numFmt = '#,##0'; }
+      });
+    }
+    const lastData = firstData + state.display.length - 1;
+    for (let rr = firstData; rr <= lastData; rr++) if ((rr - firstData) % 2 === 1)
+      for (let cc = 1; cc <= nCols; cc++) { const cell = sheet.getCell(rr, cc); if (!cell.fill || !cell.fill.fgColor) cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:EX.BG_ZEBRA} }; }
+    if (lastData >= firstData) sheet.autoFilter = { from: { row: hr.number, column: 1 }, to: { row: lastData, column: nCols } };
+
+    const buf = await wb.xlsx.writeBuffer();
+    const fname = `Confidentus_TargetSearch_${new Date().toISOString().slice(0,10)}.xlsx`;
+    saveAs(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fname);
+    showToast(`Exported ${fname}`);
+  } catch(e) { console.error(e); showToast('Export failed: ' + e.message); }
+  finally { hideToast(); }
+}
+
+/* ==========================================================
+ *  Boot
+ * ========================================================== */
+async function boot() {
+  showOverlay();
+  try {
+    const res = await loadAllData();
+    updateRefreshedIndicator();
+    state.sortCol = 'rev_' + FIN_LATEST_YEAR;
+    state.sortDir = 'desc';
+    const yr = document.getElementById('f-year'); if (yr) yr.value = String(FIN_LATEST_YEAR);
+    hideOverlay();
+    await runScreen();
+    // Background refresh if cache is old
+    if (res.fromCache && res.cachedAt && (Date.now() - res.cachedAt > CACHE_TTL)) {
+      fetchAndInstallData(true).then(() => { scheduleScreen(0); updateRefreshedIndicator(); }).catch(()=>{});
+    }
+  } catch(e) {
+    console.error(e);
+    setLoading('Failed to load: ' + e.message);
+  }
+}
+window.addEventListener('resize', () => { if (state.display && state.display.length) renderWindow(); });
+boot();
+</script>
+</body>
+</html>
